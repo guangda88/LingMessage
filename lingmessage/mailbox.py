@@ -147,7 +147,10 @@ class Mailbox:
         path = self._index_path()
         if not path.exists():
             return {"threads": [], "last_updated": _now_iso()}
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+        return {"threads": [], "last_updated": _now_iso()}
 
     def _update_index(
         self,
