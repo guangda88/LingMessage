@@ -118,9 +118,10 @@ class Mailbox:
         if not d.exists():
             return ()
         messages: list[Message] = []
-        for p in sorted(d.glob("msg_*.json")):
+        for p in d.glob("msg_*.json"):
             data = json.loads(p.read_text(encoding="utf-8"))
             messages.append(Message.from_dict(data))
+        messages.sort(key=lambda m: m.timestamp)
         return tuple(messages)
 
     def list_threads(

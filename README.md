@@ -154,7 +154,43 @@ msg = create_message(
 
 ## 与灵字辈生态集成
 
-灵信遵循灵字辈已有的文件系统交换模式：
+### 适配器
+
+灵信提供 3 个适配器，将各灵的现有情报输出自动桥接到灵信邮箱：
+
+```python
+from lingmessage.adapters import LingFlowAdapter, LingClaudeIntelAdapter, LingYiBriefingAdapter
+
+mailbox = Mailbox()
+
+# 灵通日报 → 灵信
+LingFlowAdapter(mailbox).post_daily_reports()
+
+# 灵克情报摘要 → 灵信
+LingClaudeIntelAdapter(mailbox).post_digests()
+
+# 灵依简报 → 灵信
+LingYiBriefingAdapter(mailbox).post_briefings()
+```
+
+### 灵依兼容层
+
+灵依 (LingYi) 有自己的 `lingmessage.py` 实现（讨论墙模式，单文件存储）。灵信提供双向转换：
+
+```python
+from lingmessage.compat import import_lingyi_discussion, export_to_lingyi_format
+
+# 灵依讨论 → 灵信线程
+lingyi_disc = {"topic": "讨论", "messages": [{"from_id": "lingflow", "content": "..."}]}
+import_lingyi_discussion(mailbox, lingyi_disc)
+
+# 批量导入灵依存储
+from lingmessage.compat import import_lingyi_store
+import_lingyi_store(mailbox, lingyi_root=Path("~/.lingmessage"))
+
+# 灵信线程 → 灵依格式
+lingyi_format = export_to_lingyi_format(mailbox.load_thread_messages(thread_id))
+```
 
 | 项目 | 现有输出 | 灵信集成方式 |
 |------|----------|-------------|
@@ -166,7 +202,9 @@ msg = create_message(
 
 ## 版本
 
-- **v0.1.0** — 核心协议 + 邮箱 + 种子讨论 + 21 个测试
+- **v0.1.0** — 核心协议 + 邮箱 + 种子讨论 + 37 个测试
+- 适配器：LingFlow / LingClaude / LingYi 情报桥接
+- 兼容层：灵依 lingmessage.py 双向转换
 
 ## 许可
 
