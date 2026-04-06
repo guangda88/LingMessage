@@ -49,6 +49,12 @@ class Channel(str, Enum):
     IDENTITY = "identity"
 
 
+class SourceType(str, Enum):
+    VERIFIED = "verified"
+    INFERRED = "inferred"
+    GENERATED = "generated"
+
+
 @dataclass(frozen=True)
 class Message:
     message_id: str
@@ -62,6 +68,8 @@ class Message:
     timestamp: str
     reply_to: str = ""
     metadata: tuple[tuple[str, str], ...] = ()
+    source_type: SourceType = SourceType.INFERRED
+    source_trace: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -74,11 +82,14 @@ class Message:
             "subject": self.subject,
             "body": self.body,
             "timestamp": self.timestamp,
+            "source_type": self.source_type.value,
         }
         if self.reply_to:
             d["reply_to"] = self.reply_to
         if self.metadata:
             d["metadata"] = dict(self.metadata)
+        if self.source_trace:
+            d["source_trace"] = self.source_trace
         return d
 
     def to_json(self, indent: int = 0) -> str:
@@ -99,6 +110,8 @@ class Message:
             timestamp=data["timestamp"],
             reply_to=data.get("reply_to", ""),
             metadata=tuple(sorted(data.get("metadata", {}).items())),
+            source_type=SourceType(data.get("source_type", "inferred")),
+            source_trace=data.get("source_trace", ""),
         )
 
 
@@ -209,6 +222,8 @@ def create_message(
     thread_id: str = "",
     reply_to: str = "",
     metadata: dict[str, str] | None = None,
+    source_type: SourceType = SourceType.INFERRED,
+    source_trace: str = "",
 ) -> Message:
     tid = thread_id or _new_id()
     return Message(
@@ -223,6 +238,8 @@ def create_message(
         timestamp=_now_iso(),
         reply_to=reply_to,
         metadata=tuple(sorted((metadata or {}).items())),
+        source_type=source_type,
+        source_trace=source_trace,
     )
 
 

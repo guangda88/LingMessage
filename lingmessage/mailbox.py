@@ -12,6 +12,7 @@ from lingmessage.types import (
     LingIdentity,
     Message,
     MessageType,
+    SourceType,
     ThreadHeader,
     ThreadStatus,
     _new_id,
@@ -53,6 +54,8 @@ class Mailbox:
         body: str,
         message_type: MessageType = MessageType.OPEN,
         metadata: dict[str, str] | None = None,
+        source_type: SourceType = SourceType.INFERRED,
+        source_trace: str = "",
     ) -> tuple[ThreadHeader, Message]:
         tid = _new_id()
         first = create_message(
@@ -64,6 +67,8 @@ class Mailbox:
             body=body,
             thread_id=tid,
             metadata=metadata,
+            source_type=source_type,
+            source_trace=source_trace,
         )
         header = create_thread_header(
             topic=topic,
@@ -87,6 +92,8 @@ class Mailbox:
         body: str,
         message_type: MessageType = MessageType.REPLY,
         metadata: dict[str, str] | None = None,
+        source_type: SourceType = SourceType.INFERRED,
+        source_trace: str = "",
     ) -> Message:
         header = self.load_thread_header(thread_id)
         if header is None:
@@ -101,6 +108,8 @@ class Mailbox:
             thread_id=thread_id,
             reply_to="",
             metadata=metadata,
+            source_type=source_type,
+            source_trace=source_trace,
         )
         self.post(msg)
         self._increment_thread(header)
