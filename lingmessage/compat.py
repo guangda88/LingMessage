@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """灵信兼容层 — 桥接灵依现有 lingmessage.py 格式到灵信协议
 
 灵依 (LingYi) 有自己的 lingmessage.py 实现，格式不同于灵信协议。
@@ -14,6 +12,8 @@ from __future__ import annotations
   - 建议：灵信使用独立路径，如 ~/.lingmessage/v2/
 """
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any
@@ -21,29 +21,13 @@ from typing import Any
 from lingmessage.mailbox import Mailbox
 from lingmessage.types import (
     Channel,
+    IDENTITY_MAP,
     LingIdentity,
     Message,
-    MessageType,
     ThreadHeader,
-    ThreadStatus,
-    _now_iso,
-    _new_id,
-    create_message,
-    create_thread_header,
 )
 
-_IDENTITY_MAP: dict[str, LingIdentity] = {
-    "lingflow": LingIdentity.LINGFLOW,
-    "lingclaude": LingIdentity.LINGCLAUDE,
-    "lingyi": LingIdentity.LINGYI,
-    "lingzhi": LingIdentity.LINGZHI,
-    "lingtongask": LingIdentity.LINGTONGASK,
-    "lingterm": LingIdentity.LINGXI,
-    "lingxi": LingIdentity.LINGXI,
-    "lingminopt": LingIdentity.LINGMINOPT,
-    "lingresearch": LingIdentity.LINGRESEARCH,
-    "zhibridge": LingIdentity.LINGZHI,
-}
+_IDENTITY_MAP = IDENTITY_MAP
 
 _IDENTITY_REVERSE: dict[LingIdentity, str] = {
     LingIdentity.LINGFLOW: "lingflow",
@@ -51,7 +35,7 @@ _IDENTITY_REVERSE: dict[LingIdentity, str] = {
     LingIdentity.LINGYI: "lingyi",
     LingIdentity.LINGZHI: "lingzhi",
     LingIdentity.LINGTONGASK: "lingtongask",
-    LingIdentity.LINGXI: "lingterm",
+    LingIdentity.LINGXI: "lingxi",
     LingIdentity.LINGMINOPT: "lingminopt",
     LingIdentity.LINGRESEARCH: "lingresearch",
 }

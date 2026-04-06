@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """灵信命令行 — 跨灵项目讨论协议的 CLI 工具"""
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -13,13 +13,14 @@ from lingmessage.adapters import (
     LingYiBriefingAdapter,
 )
 from lingmessage.compat import import_lingyi_discussion, import_lingyi_store
+from lingmessage.discuss import MEMBERS, continue_discussion, open_discussion
 from lingmessage.mailbox import Mailbox
 from lingmessage.seed import seed_all
 from lingmessage.types import (
     Channel,
     LingIdentity,
-    MessageType,
     ThreadStatus,
+    sender_display,
 )
 
 
@@ -57,7 +58,7 @@ def cmd_read(args: argparse.Namespace) -> None:
     print("=" * 60)
     messages = mb.load_thread_messages(args.thread_id)
     for m in messages:
-        sender_name = _sender_display(m.sender)
+        sender_name = sender_display(m.sender)
         print(f"\n[{sender_name}] {m.subject}")
         print(f"  type={m.message_type.value}  time={m.timestamp}")
         print()
@@ -167,19 +168,64 @@ def cmd_import(args: argparse.Namespace) -> None:
             print("导入失败（空讨论）")
 
 
+def cmd_discuss(args: argparse.Namespace) -> None:
+    mb = _mb(args)
+    channel = Channel(args.channel)
+    participants = (
+        args.participants.split(",") if args.participants else None
+    )
+
+    body = args.body
+    if not body:
+        persona = MEMBERS[args.initiator]
+        from lingmessage.discuss import _build_system_prompt, _call_llm
+        prompt = _build_system_prompt(persona)
+        api_msgs = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"请在议事厅发起关于「{args.topic}」的讨论。阐述你的核心观点，向其他成员提问。200-400字。"},
+        ]
+        body = _call_llm(api_msgs) or f"各位，我想讨论一个问题：{args.topic}。请从各自角度发表看法。"
+
+    result = open_discussion(
+        mailbox=mb,
+        topic=args.topic,
+        body=body,
+        initiator=args.initiator,
+        participants=participants,
+        channel=channel,
+        rounds=args.rounds,
+        speakers_per_round=args.speakers,
+    )
+
+    print("\n讨论完成!")
+    print(f"  议题: {result.topic}")
+    print(f"  讨论串: {result.thread_id}")
+    print(f"  生成消息: {result.messages_generated}")
+    print(f"  发言成员: {', '.join(MEMBERS[s].name for s in result.speakers if s in MEMBERS)}")
+    print(f"  轮数: {result.rounds}")
+    print(f"  达成共识: {'是' if result.consensus_reached else '否'}")
+    print("\n用以下命令查看讨论:")
+    print(f"  python3 -m lingmessage.cli read {result.thread_id}")
+
+
+def cmd_continue(args: argparse.Namespace) -> None:
+    mb = _mb(args)
+    result = continue_discussion(
+        mailbox=mb,
+        thread_id=args.thread_id,
+        rounds=args.rounds,
+        speakers_per_round=args.speakers,
+    )
+    if result is None:
+        print("无法继续讨论（讨论串不存在或已关闭）")
+        return
+    print("\n讨论继续!")
+    print(f"  新增消息: {result.messages_generated}")
+    print(f"  新发言成员: {', '.join(MEMBERS[s].name for s in result.speakers if s in MEMBERS)}")
+
+
 def _sender_display(identity: LingIdentity) -> str:
-    names = {
-        LingIdentity.LINGFLOW: "灵通",
-        LingIdentity.LINGCLAUDE: "灵克",
-        LingIdentity.LINGYI: "灵依",
-        LingIdentity.LINGZHI: "灵知",
-        LingIdentity.LINGTONGASK: "灵通问道",
-        LingIdentity.LINGXI: "灵犀",
-        LingIdentity.LINGMINOPT: "灵极优",
-        LingIdentity.LINGRESEARCH: "灵研",
-        LingIdentity.ALL: "所有人",
-    }
-    return names.get(identity, identity.value)
+    return sender_display(identity)
 
 
 def main() -> None:
@@ -220,6 +266,20 @@ def main() -> None:
     p_import = sub.add_parser("import", help="导入灵依讨论文件")
     p_import.add_argument("file", help="灵依讨论 JSON 文件路径")
 
+    p_discuss = sub.add_parser("discuss", help="发起真实讨论")
+    p_discuss.add_argument("topic", help="议题标题")
+    p_discuss.add_argument("--body", default="", help="发起正文，默认让LLM生成")
+    p_discuss.add_argument("--initiator", default="lingflow", choices=list(MEMBERS.keys()), help="发起成员")
+    p_discuss.add_argument("--participants", default="", help="参与成员，逗号分隔（默认全部）")
+    p_discuss.add_argument("--channel", default="ecosystem", choices=[c.value for c in Channel])
+    p_discuss.add_argument("--rounds", type=int, default=2, help="讨论轮数")
+    p_discuss.add_argument("--speakers", type=int, default=3, help="每轮发言人数")
+
+    p_continue = sub.add_parser("continue", help="继续已有讨论")
+    p_continue.add_argument("thread_id", help="讨论串ID")
+    p_continue.add_argument("--rounds", type=int, default=1, help="额外轮数")
+    p_continue.add_argument("--speakers", type=int, default=2, help="每轮发言人数")
+
     args = parser.parse_args()
     if args.command is None:
         parser.print_help()
@@ -234,6 +294,8 @@ def main() -> None:
         "seed": cmd_seed,
         "sync": cmd_sync,
         "import": cmd_import,
+        "discuss": cmd_discuss,
+        "continue": cmd_continue,
     }
     cmd_func = commands.get(args.command)
     if cmd_func:

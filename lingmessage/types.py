@@ -1,8 +1,8 @@
-from __future__ import annotations
-
 """灵信核心类型 — 跨灵项目讨论协议的原子单元"""
 
-from dataclasses import dataclass, field
+from __future__ import annotations
+
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -135,17 +135,60 @@ class ThreadHeader:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ThreadHeader:
+        channel_val = data.get("channel", "ecosystem")
+        status_val = data.get("status", "open")
+        try:
+            status_enum = ThreadStatus(status_val)
+        except ValueError:
+            status_enum = ThreadStatus.OPEN
+        if status_enum == ThreadStatus.OPEN:
+            status_enum = ThreadStatus.ACTIVE
+        try:
+            channel_enum = Channel(channel_val)
+        except ValueError:
+            channel_enum = Channel.ECOSYSTEM
         return cls(
-            thread_id=data["thread_id"],
-            topic=data["topic"],
-            channel=Channel(data["channel"]),
-            status=ThreadStatus(data["status"]),
+            thread_id=data.get("thread_id") or data.get("id", ""),
+            topic=data.get("topic", data.get("title", "")),
+            channel=channel_enum,
+            status=status_enum,
             participants=tuple(data.get("participants", [])),
-            created_at=data["created_at"],
-            updated_at=data["updated_at"],
+            created_at=data.get("created_at", ""),
+            updated_at=data.get("updated_at", ""),
             message_count=data.get("message_count", 0),
             summary=data.get("summary", ""),
         )
+
+
+IDENTITY_MAP: dict[str, LingIdentity] = {
+    "lingflow": LingIdentity.LINGFLOW,
+    "lingclaude": LingIdentity.LINGCLAUDE,
+    "lingyi": LingIdentity.LINGYI,
+    "lingzhi": LingIdentity.LINGZHI,
+    "lingtongask": LingIdentity.LINGTONGASK,
+    "lingxi": LingIdentity.LINGXI,
+    "lingminopt": LingIdentity.LINGMINOPT,
+    "lingresearch": LingIdentity.LINGRESEARCH,
+    "lingterm": LingIdentity.LINGXI,
+    "zhibridge": LingIdentity.LINGZHI,
+}
+
+
+_IDENTITY_NAMES: dict[LingIdentity, str] = {
+    LingIdentity.LINGFLOW: "灵通",
+    LingIdentity.LINGCLAUDE: "灵克",
+    LingIdentity.LINGYI: "灵依",
+    LingIdentity.LINGZHI: "灵知",
+    LingIdentity.LINGTONGASK: "灵通问道",
+    LingIdentity.LINGXI: "灵犀",
+    LingIdentity.LINGMINOPT: "灵极优",
+    LingIdentity.LINGRESEARCH: "灵研",
+    LingIdentity.ALL: "所有人",
+}
+
+
+def sender_display(identity: LingIdentity) -> str:
+    return _IDENTITY_NAMES.get(identity, identity.value)
 
 
 def _now_iso() -> str:

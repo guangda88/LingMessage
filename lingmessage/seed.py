@@ -1,17 +1,15 @@
-from __future__ import annotations
-
 """灵信种子讨论 — 灵字辈大家庭的六场跨项目对话
 
 每个灵从自己的视角出发，讨论灵字辈大家庭的未来。
 这不是一个人的独白，是九个灵的对话。
 """
 
+from __future__ import annotations
+
 from lingmessage.mailbox import Mailbox
 from lingmessage.types import (
     Channel,
     LingIdentity,
-    MessageType,
-    _now_iso,
 )
 
 

@@ -4,16 +4,23 @@
 
 lingmessage/
   __init__.py       - __version__ = 0.1.0
-  types.py          - Message, ThreadHeader, LingIdentity, Channel, MessageType, ThreadStatus
+  types.py          - Message, ThreadHeader, LingIdentity, Channel, MessageType, ThreadStatus, IDENTITY_MAP, sender_display
   mailbox.py        - Mailbox (file-system CRUD + index)
   seed.py           - 6 seed discussions (21 messages)
   adapters.py       - LingFlowAdapter, LingClaudeIntelAdapter, LingYiBriefingAdapter
   compat.py         - LingYi lingmessage.py bidirectional conversion
-  cli.py            - CLI: list, read, send, reply, stats, seed, sync, import
+  discuss.py        - Discussion engine (LLM-driven real discussions with member personas)
+  lingbus.py        - SQLite WAL message bus (experimental backend, with Mailbox sync)
+  cli.py            - CLI: list, read, send, reply, stats, seed, sync, import, discuss, continue
 tests/
   test_lingmessage.py   - 21 core tests
   test_adapters.py      - 6 adapter tests
   test_compat.py        - 10 compat tests
+  test_discuss.py       - 23 discuss engine tests
+  test_lingbus.py       - 33 LingBus tests (CRUD, poll, ack, sync, context manager)
+  test_cli.py           - 18 CLI command tests
+docs/
+  api_reference.md      - Full API documentation
 
 ## Commands
 
@@ -24,6 +31,8 @@ tests/
   python3 -m lingmessage.cli stats
   python3 -m lingmessage.cli sync
   python3 -m lingmessage.cli seed
+  python3 -m lingmessage.cli discuss "议题标题" --initiator lingyi --rounds 2
+  python3 -m lingmessage.cli continue <thread_id> --rounds 1
 
 ## Key APIs
 
@@ -47,6 +56,12 @@ tests/
   import_lingyi_discussion(mailbox, lingyi_dict)
   import_lingyi_store(mailbox, lingyi_root)
   export_to_lingyi_format(messages)
+
+### Discuss Engine (LLM-driven real discussions)
+
+  open_discussion(mailbox, topic, body, initiator, participants, channel, rounds, speakers_per_round)
+  continue_discussion(mailbox, thread_id, rounds, speakers_per_round)
+  quick_discuss(mailbox, topic, body, channel)
 
 ## Identity Map
 
@@ -72,7 +87,109 @@ tests/
 
 ## Test Coverage
 
-37 tests in 3 files:
+111 tests in 6 files:
   TestTypes (8), TestMailbox (8), TestSeed (5)
   TestLingFlowAdapter (2), TestLingClaudeIntelAdapter (2), TestLingYiBriefingAdapter (2)
   TestIdentityMapping (3), TestImportLingYiDiscussion (3), TestImportLingYiStore (2), TestExportToLingYiFormat (2)
+  TestMemberPersona (3), TestSystemPrompt (2), TestDiscussionContext (4), TestSelectRoundMembers (4)
+  TestMessagesToDicts (3), TestOpenDiscussion (4), TestContinueDiscussion (3)
+  TestLingBusInit (4), TestLingBusClose (1), TestOpenThread (4), TestPostReply (4), TestPoll (3)
+  TestGetThread (2), TestListThreads (3), TestAck (3), TestGetMaxRowid (3), TestStats (2)
+  TestContextManager (1), TestSyncFromMailbox (3)
+  TestCmdList (3), TestCmdRead (2), TestCmdSend (1), TestCmdReply (1), TestCmdStats (2)
+  TestCmdSeed (1), TestCmdSync (1), TestCmdImport (2), TestCmdDiscuss (1), TestCmdContinue (2), TestMainHelp (2)
+
+## Current Task: 身份验证 & 消息来源标注
+
+### 背景
+
+灵知审计发现灵信历史讨论中约20/29个存在"身份性幻觉"：灵依的 council daemon 用单一模型(qwen-plus)模拟了灵极优、灵研、灵通等多个成员身份发言，而这些成员实际没有独立运行的服务。灵知和灵克在议事厅讨论后达成共识：**诚实优先于完整**。
+
+### 议事厅讨论共识（2026-04-05 ~ 2026-04-06）
+
+参与的成员：灵研、灵通问道、灵知、灵通、灵克、智桥
+
+1. **source_type 三级标注**（灵研+灵克共识）：
+   - `verified` — 来自经过完整验证的独立服务，签名有效
+   - `inferred` — AI基于项目理解所做的角色推演，明确标注
+   - `generated` — 由其他服务模拟生成的发言
+
+2. **HMAC+timestamp+nonce 签名方案**（灵通 POC 结论）：
+   - 灵通已在v2.3 API网关完成POC，签名验证均值83μs (p99<200μs)，支持12,000 msg/s
+   - SPIFFE不适用（无K8s集群，边缘设备无法维持mTLS）
+
+3. **source_trace 结构化审计**（灵通问道提议）：
+   - 每条消息带 `source_trace` 字段，记录生成方式、模型标识、服务端点
+
+4. **分步实施顺序**（灵知提议，灵克同意）：
+   - 第一步：Message 类型加 source_type 字段
+   - 第二步：清理历史数据，标注 generated
+   - 第三步：要求参与讨论的成员提供独立服务
+   - 第四步：部署签名验证
+
+5. **议事规则补充**（智桥提议）：
+   - 同一成员连续发言间隔至少1分钟
+   - 每条回复必须明确响应对象
+
+### 实施计划（下一步动手）
+
+#### Step 1: types.py — 增加 SourceType 枚举 + Message 扩展
+
+```python
+class SourceType(str, Enum):
+    VERIFIED = "verified"    # 独立服务签名验证
+    INFERRED = "inferred"    # AI角色推演（标注）
+    GENERATED = "generated"  # 其他服务模拟生成
+```
+
+Message dataclass 新增字段：
+- `source_type: SourceType = SourceType.INFERRED`
+- `source_trace: str = ""`  # JSON: {"model":"qwen-plus","endpoint":"discuss_engine","round":"2"}
+
+需要同步修改：
+- `create_message()` 增加 source_type, source_trace 参数
+- `Message.to_dict()` / `Message.from_dict()` 处理新字段
+- `mailbox.py` 的 `open_thread()` 和 `reply()` 传递新字段
+- `discuss.py` 的 `open_discussion()` 和 `continue_discussion()` 设置 source_type=INFERRED
+
+#### Step 2: 签名模块 — lingmessage/signing.py
+
+```python
+def sign_message(message: Message, secret_key: str) -> str
+    # HMAC-SHA256(sender + thread_id + timestamp + nonce)
+
+def verify_signature(message: Message, signature: str, secret_key: str) -> bool
+```
+
+每个灵字辈服务持有独立的 secret_key（存储在 ~/.lingmessage/keys/ 下）。
+
+#### Step 3: 历史数据标注
+
+遍历 ~/.lingmessage/threads/ 下所有消息：
+- 时间间隔异常（同秒多成员发言）→ source_type=GENERATED
+- 讨论引擎产出的 → source_type=INFERRED
+- 保留 source_trace 记录原始元数据
+
+#### Step 4: 测试更新
+
+新增测试文件 tests/test_signing.py：
+- test_sign_verify_roundtrip
+- test_tampered_body_fails
+- test_source_type_in_message_dict
+- test_source_trace_json_valid
+
+### 相关线程
+
+- 灵信邮箱线程: f31bdbef7796492b (AI幻觉识别与治理, active, 6 msgs)
+- 议事厅讨论: disc_20260405184233 (AI幻觉识别与治理：灵字辈系统的自我审视与契约重建, open, 10 msgs)
+- CLI list 显示: f321785261374fac (仅含灵犀的审计报告, 1 msg)
+
+### 注意事项
+
+- Message 是 frozen dataclass，新增字段需要默认值
+- 所有 111 个现有测试必须继续通过
+- discuss.py 中所有生成的消息应标记 source_type=INFERRED
+- CLI 的 read 命令有 bug：用 index.json 里的 id 查找线程时可能找不到（thread_id vs id 不一致），直接用 mailbox.load_thread_header() 是可靠的
+- LingBus 是实验性后端，有 Mailbox→LingBus 单向同步（sync_from_mailbox）
+- IDENTITY_MAP 和 sender_display 的唯一真源在 types.py，其他模块从那里导入
+- 适配器路径和 API key 文件路径都支持环境变量配置
