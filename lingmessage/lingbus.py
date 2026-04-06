@@ -57,7 +57,8 @@ def _now_iso() -> str:
 
 
 def _new_id() -> str:
-    return uuid4().hex[:16]
+    """Generate a unique ID using full UUID (128-bit)."""
+    return uuid4().hex
 
 
 @dataclass
@@ -115,12 +116,20 @@ class LingBus:
         self._dir = bus_dir or _BUS_DIR
         self._dir.mkdir(parents=True, exist_ok=True)
         self._db_path = self._dir / _DB_NAME
-        self._conn = sqlite3.connect(str(self._db_path))
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(_SCHEMA_SQL)
+        self._conn = None
+        try:
+            self._conn = sqlite3.connect(str(self._db_path))
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self._conn.row_factory = sqlite3.Row
+            self._conn.executescript(_SCHEMA_SQL)
+        except Exception:
+            # Clean up connection if initialization fails
+            if self._conn:
+                self._conn.close()
+                self._conn = None
+            raise
 
     def __enter__(self) -> LingBus:
         return self
@@ -129,7 +138,10 @@ class LingBus:
         self.close()
 
     def close(self) -> None:
-        self._conn.close()
+        """Safely close the database connection if it exists."""
+        if self._conn:
+            self._conn.close()
+            self._conn = None
 
     def open_thread(
         self,

@@ -33,6 +33,17 @@ _KEY_FILE_PATH = os.environ.get(
 
 def _get_api_key() -> str:
     key = os.environ.get("DASHSCOPE_API_KEY", "")
+    if key:
+        return key
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path.home() / ".ling_lib"))
+        from ling_key_store import get_key
+        key = get_key("DASHSCOPE_API_KEY") or get_key("QWEN_DASHSCOPE_API_KEY") or ""
+    except (ImportError, ModuleNotFoundError, AttributeError):
+        # ling_key_store not available, will try fallback
+        pass
     if not key and os.path.exists(_KEY_FILE_PATH):
         with open(_KEY_FILE_PATH, encoding="utf-8") as f:
             key = f.read().strip()
@@ -234,9 +245,13 @@ def _call_llm(messages: list[dict[str, str]], model: str = "qwen-plus") -> str |
             if try_model != model:
                 logger.info(f"DashScope fallback: {model} → {try_model}")
             return content or None
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.error(f"网络异常 ({try_model}): {e}")
+            last_error = f"network: {e}"
+            continue
         except Exception as e:
             logger.error(f"LLM 调用异常 ({try_model}): {e}")
-            last_error = str(e)
+            last_error = f"unexpected: {e}"
             continue
     logger.error(f"所有 DashScope 模型均失败，最后错误: {last_error}")
     return None
@@ -306,6 +321,12 @@ def _judge_discussion(
                 logger.info(f"DashScope fallback: qwen-plus → {try_model}")
             return json.loads(content)
         logger.error(f"讨论判断失败，所有模型均失败: {last_error}")
+        return None
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.error(f"讨论判断网络异常: {e}")
+        return None
+    except (json.JSONDecodeError, KeyError) as e:
+        logger.error(f"讨论判断解析异常: {e}")
         return None
     except Exception as e:
         logger.error(f"讨论判断失败: {e}")
