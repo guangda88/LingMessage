@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -15,7 +13,6 @@ from lingmessage.types import (
     Message,
     MessageType,
     ThreadHeader,
-    ThreadStatus,
     create_message,
     create_thread_header,
 )

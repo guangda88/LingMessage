@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """灵信共享邮箱 — 所有灵项目读写的公共讨论区"""
+
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
@@ -162,7 +162,8 @@ class Mailbox:
         threads = index.get("threads", [])
         found = False
         for i, t in enumerate(threads):
-            if t["thread_id"] == tid:
+            t_id = t.get("thread_id") or t.get("id", "")
+            if t_id == tid:
                 threads[i]["updated_at"] = _now_iso()
                 threads[i]["message_count"] = threads[i].get("message_count", 0) + 1
                 if header is not None:
@@ -186,7 +187,8 @@ class Mailbox:
         index = self._load_index()
         tid = header.thread_id
         for i, t in enumerate(index.get("threads", [])):
-            if t["thread_id"] == tid:
+            t_id = t.get("thread_id") or t.get("id", "")
+            if t_id == tid:
                 index["threads"][i]["message_count"] = t.get("message_count", 1) + 1
                 index["threads"][i]["updated_at"] = _now_iso()
                 break
