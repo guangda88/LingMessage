@@ -18,6 +18,7 @@ from lingmessage.types import (
     Channel,
     IDENTITY_MAP,
     LingIdentity,
+    SourceType,
     ThreadStatus,
     sender_display,
 )
@@ -188,35 +189,57 @@ def _build_discussion_context(
     return api_messages
 
 
+_DASHSCOPE_MODELS = ["qwen-plus", "qwen-turbo", "qwen-max"]
+
+
 def _call_llm(messages: list[dict[str, str]], model: str = "qwen-plus") -> str | None:
     api_key = _get_api_key()
     if not api_key:
         logger.error("DashScope API key 未配置")
         return None
 
-    try:
-        import dashscope
-        from dashscope import Generation
+    models_to_try = _DASHSCOPE_MODELS
+    if model not in models_to_try:
+        models_to_try = [model] + models_to_try
+    elif model != models_to_try[0]:
+        idx = models_to_try.index(model)
+        models_to_try = [model] + models_to_try[:idx] + models_to_try[idx + 1:]
 
-        dashscope.api_key = api_key
-        resp = Generation.call(
-            model=model,
-            messages=messages,
-            result_format="message",
-            temperature=0.8,
-            top_p=0.9,
-        )
-        if resp.status_code != 200:
-            logger.error(f"LLM 调用失败: {resp.status_code} {resp.message}")
-            return None
-        choices = resp.output.get("choices", [])
-        if not choices:
-            return None
-        content = choices[0]["message"].get("content", "").strip()
-        return content or None
-    except Exception as e:
-        logger.error(f"LLM 调用异常: {e}")
-        return None
+    last_error = None
+    for try_model in models_to_try:
+        try:
+            import dashscope
+            from dashscope import Generation
+
+            dashscope.api_key = api_key
+            resp = Generation.call(
+                model=try_model,
+                messages=messages,
+                result_format="message",
+                temperature=0.8,
+                top_p=0.9,
+            )
+            if resp.status_code == 429:
+                logger.warning(f"DashScope {try_model} 限流，尝试下一个模型")
+                last_error = f"429 rate limit on {try_model}"
+                continue
+            if resp.status_code != 200:
+                logger.error(f"LLM 调用失败 ({try_model}): {resp.status_code} {resp.message}")
+                last_error = f"{resp.status_code}: {resp.message}"
+                continue
+            choices = resp.output.get("choices", [])
+            if not choices:
+                continue
+            content = choices[0]["message"].get("content", "").strip()
+            if try_model != model:
+                logger.info(f"DashScope fallback: {model} → {try_model}")
+            return content or None
+        except Exception as e:
+            logger.error(f"LLM 调用异常 ({try_model}): {e}")
+            last_error = str(e)
+            continue
+    logger.error(f"所有 DashScope 模型均失败，最后错误: {last_error}")
+    return None
 
 
 def _judge_discussion(
@@ -258,21 +281,32 @@ def _judge_discussion(
         from dashscope import Generation
 
         dashscope.api_key = api_key
-        resp = Generation.call(
-            model="qwen-plus",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg},
-            ],
-            result_format="message",
-            temperature=0.3,
-        )
-        if resp.status_code != 200:
-            return None
-        content = resp.output["choices"][0]["message"].get("content", "").strip()
-        if content.startswith("```"):
-            content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-        return json.loads(content)
+        last_error = None
+        for try_model in _DASHSCOPE_MODELS:
+            resp = Generation.call(
+                model=try_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_msg},
+                ],
+                result_format="message",
+                temperature=0.3,
+            )
+            if resp.status_code == 429:
+                logger.warning(f"DashScope {try_model} 限流，尝试下一个模型")
+                last_error = f"429 rate limit on {try_model}"
+                continue
+            if resp.status_code != 200:
+                last_error = f"{resp.status_code}: {resp.message}"
+                continue
+            content = resp.output["choices"][0]["message"].get("content", "").strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            if try_model != "qwen-plus":
+                logger.info(f"DashScope fallback: qwen-plus → {try_model}")
+            return json.loads(content)
+        logger.error(f"讨论判断失败，所有模型均失败: {last_error}")
+        return None
     except Exception as e:
         logger.error(f"讨论判断失败: {e}")
         return None
@@ -375,6 +409,8 @@ def open_discussion(
         topic=topic,
         subject=f"{MEMBERS[initiator].name}发起：{topic}",
         body=body,
+        source_type=SourceType.INFERRED,
+        source_trace=f"discuss_engine:initiator:{initiator}",
     )
 
     thread_id = header.thread_id
@@ -430,6 +466,8 @@ def open_discussion(
                 subject=f"{subject_prefix}：{topic}",
                 body=reply_content,
                 metadata={"source": "discuss_engine", "round": str(round_num + 1)},
+                source_type=SourceType.INFERRED,
+                source_trace=f"discuss_engine:round:{round_num + 1}:speaker:{speaker_id}",
             )
             total_generated += 1
             if speaker_id not in all_speakers:
@@ -520,6 +558,8 @@ def continue_discussion(
                 subject=f"{persona.name}回应：{header.topic}",
                 body=reply_content,
                 metadata={"source": "discuss_engine", "round": f"cont-{round_num + 1}"},
+                source_type=SourceType.INFERRED,
+                source_trace=f"discuss_engine:continue:round:{round_num + 1}:speaker:{speaker_id}",
             )
             total_generated += 1
             if speaker_id not in all_speakers:

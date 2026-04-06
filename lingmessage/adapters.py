@@ -15,6 +15,7 @@ from lingmessage.types import (
     Channel,
     LingIdentity,
     MessageType,
+    SourceType,
     create_message,
 )
 
@@ -72,6 +73,8 @@ class LingFlowAdapter:
                 subject=f"灵通日报 {date_str}",
                 body=body,
                 metadata={"source": "daily_report", "date": date_str},
+                source_type=SourceType.GENERATED,
+                source_trace=f"lingflow:adapter:report:{date_str}",
             )
             self._mailbox.post(msg)
             posted.append(msg.message_id)
@@ -127,6 +130,8 @@ class LingClaudeIntelAdapter:
                 subject=f"灵克情报摘要 {report_date}",
                 body=body,
                 metadata={"source": "daily_digest", "date": report_date},
+                source_type=SourceType.GENERATED,
+                source_trace=f"lingclaude:adapter:digest:{report_date}",
             )
             self._mailbox.post(msg)
             posted.append(msg.message_id)
@@ -163,6 +168,8 @@ class LingYiBriefingAdapter:
                 subject=f"灵依简报 {ts}",
                 body=body,
                 metadata={"source": "briefing"},
+                source_type=SourceType.GENERATED,
+                source_trace=f"lingyi:adapter:briefing:{ts}",
             )
             self._mailbox.post(msg)
             posted.append(msg.message_id)

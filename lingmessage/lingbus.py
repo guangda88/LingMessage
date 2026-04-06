@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS messages (
     reply_to     TEXT NOT NULL DEFAULT '',
     metadata     TEXT NOT NULL DEFAULT '{}',
     acked_by     TEXT NOT NULL DEFAULT '[]',
+    source_type  TEXT NOT NULL DEFAULT 'inferred',
+    source_trace TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (thread_id) REFERENCES threads(thread_id)
 );
 
@@ -73,6 +75,8 @@ class BusMessage:
     reply_to: str
     metadata: dict[str, str]
     acked_by: list[str]
+    source_type: str
+    source_trace: str
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> BusMessage:
@@ -92,6 +96,8 @@ class BusMessage:
             reply_to=row["reply_to"],
             metadata=json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta,
             acked_by=json.loads(raw_acked) if isinstance(raw_acked, str) else raw_acked,
+            source_type=row["source_type"] if "source_type" in row.keys() else "inferred",
+            source_trace=row["source_trace"] if "source_trace" in row.keys() else "",
         )
 
 
