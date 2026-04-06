@@ -24,6 +24,22 @@ from lingmessage.types import (
 )
 
 
+MAX_SUBJECT_LENGTH = 200
+MAX_BODY_LENGTH = 10000
+
+
+def _validate_subject(subject: str) -> None:
+    """Validate subject length."""
+    if len(subject) > MAX_SUBJECT_LENGTH:
+        raise ValueError(f"Subject too long (max {MAX_SUBJECT_LENGTH} characters)")
+
+
+def _validate_body(body: str) -> None:
+    """Validate body length."""
+    if len(body) > MAX_BODY_LENGTH:
+        raise ValueError(f"Body too long (max {MAX_BODY_LENGTH} characters)")
+
+
 def _mb(args: argparse.Namespace) -> Mailbox:
     return Mailbox(root=Path(args.mailbox))
 
@@ -75,6 +91,11 @@ def cmd_send(args: argparse.Namespace) -> None:
     body = args.body
     if body == "-" or not body:
         body = sys.stdin.read()
+
+    # Validate inputs
+    _validate_subject(args.subject)
+    _validate_body(body)
+
     header, msg = mb.open_thread(
         sender=sender,
         recipients=recipients,
@@ -93,6 +114,11 @@ def cmd_reply(args: argparse.Namespace) -> None:
     body = args.body
     if body == "-" or not body:
         body = sys.stdin.read()
+
+    # Validate inputs
+    _validate_subject(args.subject)
+    _validate_body(body)
+
     msg = mb.reply(
         thread_id=args.thread_id,
         sender=sender,
@@ -111,6 +137,92 @@ def cmd_stats(args: argparse.Namespace) -> None:
     print(f"频道分布: {json.dumps(s['by_channel'], ensure_ascii=False)}")
     print(f"状态分布: {json.dumps(s['by_status'], ensure_ascii=False)}")
     print(f"最后更新: {s['last_updated']}")
+
+
+def cmd_health(args: argparse.Namespace) -> None:
+    mb = _mb(args)
+    issues_found = False
+
+    print("🔍 灵信邮箱健康检查")
+    print("=" * 50)
+
+    # Check index file
+    index_path = mb._index_path()
+    if not index_path.exists():
+        print(f"❌ 索引文件不存在: {index_path}")
+        issues_found = True
+    else:
+        try:
+            import json
+            data = json.loads(index_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict) or "threads" not in data:
+                print(f"❌ 索引文件格式无效")
+                issues_found = True
+            else:
+                print(f"✅ 索引文件正常 (包含 {len(data['threads'])} 个讨论串)")
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"❌ 索引文件损坏: {e}")
+            issues_found = True
+
+    # Check backup file
+    backup_path = mb._index_backup_path()
+    if backup_path.exists():
+        try:
+            import json
+            data = json.loads(backup_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "threads" in data:
+                print(f"✅ 备份文件正常 (包含 {len(data['threads'])} 个讨论串)")
+            else:
+                print(f"⚠️  备份文件格式无效")
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"⚠️  备份文件损坏: {e}")
+    else:
+        print(f"ℹ️  备份文件不存在")
+
+    # Check for orphaned message files
+    threads_dir = mb._threads_dir()
+    if threads_dir.exists():
+        try:
+            import json
+            index_data = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else {"threads": []}
+            indexed_threads = {t.get("thread_id") or t.get("id", "") for t in index_data.get("threads", [])}
+
+            orphaned_count = 0
+            for thread_dir in threads_dir.iterdir():
+                if thread_dir.is_dir() and thread_dir.name not in indexed_threads:
+                    orphaned_count += 1
+                    if args.verbose:
+                        print(f"⚠️  孤立讨论串目录: {thread_dir.name}")
+
+            if orphaned_count > 0:
+                print(f"⚠️  发现 {orphaned_count} 个孤立讨论串目录")
+            else:
+                print(f"✅ 无孤立讨论串目录")
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"⚠️  无法检查孤立文件: {e}")
+    else:
+        print(f"ℹ️  threads 目录不存在")
+
+    # Check audit log
+    audit_path = mb._audit_path()
+    if audit_path.exists():
+        try:
+            line_count = 0
+            with audit_path.open(encoding="utf-8") as f:
+                for line in f:
+                    line_count += 1
+            print(f"✅ 审计日志正常 (包含 {line_count} 条记录)")
+        except OSError as e:
+            print(f"⚠️  无法读取审计日志: {e}")
+    else:
+        print(f"ℹ️  审计日志不存在")
+
+    print("=" * 50)
+    if issues_found:
+        print("❌ 发现问题，建议修复")
+        sys.exit(1)
+    else:
+        print("✅ 系统健康")
 
 
 def cmd_seed(args: argparse.Namespace) -> None:
@@ -280,6 +392,9 @@ def main() -> None:
     p_continue.add_argument("--rounds", type=int, default=1, help="额外轮数")
     p_continue.add_argument("--speakers", type=int, default=2, help="每轮发言人数")
 
+    p_health = sub.add_parser("health", help="健康检查")
+    p_health.add_argument("--verbose", "-v", action="store_true", help="显示详细信息")
+
     args = parser.parse_args()
     if args.command is None:
         parser.print_help()
@@ -296,6 +411,7 @@ def main() -> None:
         "import": cmd_import,
         "discuss": cmd_discuss,
         "continue": cmd_continue,
+        "health": cmd_health,
     }
     cmd_func = commands.get(args.command)
     if cmd_func:

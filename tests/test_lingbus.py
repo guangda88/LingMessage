@@ -54,8 +54,8 @@ class TestOpenThread:
         tid, mid = bus.open_thread(
             topic="test topic", sender="lingflow", recipients=["lingclaude"],
         )
-        assert len(tid) == 16
-        assert len(mid) == 16
+        assert len(tid) == 32
+        assert len(mid) == 32
 
     def test_thread_stored_correctly(self, bus: LingBus) -> None:
         tid, mid = bus.open_thread(
@@ -107,7 +107,7 @@ class TestPostReply:
         mid = bus.post_reply(
             thread_id=tid, sender="lingclaude", recipient="lingflow", body="reply body",
         )
-        assert len(mid) == 16
+        assert len(mid) == 32
 
     def test_reply_message_count_incremented(self, bus: LingBus) -> None:
         tid, _ = bus.open_thread(

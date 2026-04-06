@@ -9,6 +9,37 @@ from typing import Any
 from uuid import uuid4
 
 
+def _normalize_timestamp(ts: str) -> str:
+    """Normalize timestamp to UTC ISO format.
+
+    Args:
+        ts: Timestamp string (with or without timezone)
+
+    Returns:
+        Normalized ISO timestamp in UTC
+
+    Examples:
+        >>> _normalize_timestamp("2026-04-04T01:41:23")
+        "2026-04-04T01:41:23+00:00"
+        >>> _normalize_timestamp("2026-04-04T01:41:23+08:00")
+        "2026-04-03T17:41:23+00:00"
+    """
+    try:
+        # Try parsing with timezone info
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            # No timezone, assume local time and convert to UTC
+            dt = dt.replace(tzinfo=None).astimezone(timezone.utc)
+        else:
+            # Has timezone, convert to UTC
+            dt = dt.astimezone(timezone.utc)
+        return dt.isoformat()
+    except ValueError:
+        # Fallback: if parsing fails, return as-is but log warning
+        # This maintains backward compatibility for malformed timestamps
+        return ts
+
+
 class LingIdentity(str, Enum):
     LINGFLOW = "lingflow"
     LINGCLAUDE = "lingclaude"
@@ -98,16 +129,51 @@ class Message:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Message:
+        # Backward compatibility: handle old message format
+        # Old format: recipients (array), type, missing channel
+        # New format: recipient (singular), message_type, channel required
+
+        # Handle recipient field migration
+        recipient = data.get("recipient")
+        if recipient is None:
+            # Old format: recipients array
+            recipients = data.get("recipients", ["all"])
+            # Filter out invalid identity values
+            valid_identities = {id_.value for id_ in LingIdentity}
+            valid_recipients = [r for r in recipients if r in valid_identities]
+            recipient = valid_recipients[0] if valid_recipients else "all"
+
+        # Handle message_type field migration
+        message_type = data.get("message_type")
+        if message_type is None:
+            # Old format: type field
+            message_type = data.get("type", "open")
+            # Map old types to new MessageType enum
+            type_mapping = {
+                "assignment": "open",
+                "info": "reply",
+                "reminder": "reply",
+                "requirement": "question",
+                "task": "open",
+                "urgent": "question",
+            }
+            message_type = type_mapping.get(message_type, message_type)
+
+        # Handle channel field (missing in old format, default to knowledge)
+        channel = data.get("channel")
+        if channel is None:
+            channel = "knowledge"  # Default channel for old messages
+
         return cls(
             message_id=data["message_id"],
             thread_id=data["thread_id"],
             sender=LingIdentity(data["sender"]),
-            recipient=LingIdentity(data["recipient"]),
-            message_type=MessageType(data["message_type"]),
-            channel=Channel(data["channel"]),
+            recipient=LingIdentity(recipient),
+            message_type=MessageType(message_type),
+            channel=Channel(channel),
             subject=data["subject"],
             body=data["body"],
-            timestamp=data["timestamp"],
+            timestamp=_normalize_timestamp(data["timestamp"]),
             reply_to=data.get("reply_to", ""),
             metadata=tuple(sorted(data.get("metadata", {}).items())),
             source_type=SourceType(data.get("source_type", "inferred")),
@@ -209,7 +275,8 @@ def _now_iso() -> str:
 
 
 def _new_id() -> str:
-    return uuid4().hex[:16]
+    """Generate a unique ID using full UUID (128-bit)."""
+    return uuid4().hex
 
 
 def create_message(
