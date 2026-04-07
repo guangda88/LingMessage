@@ -14,6 +14,10 @@ lingmessage/
   signing.py        - Message signing and verification (HMAC-SHA256)
   annotate.py       - Historical source annotation (source_type + source_trace backfill)
   cli.py            - CLI: list, read, send, reply, stats, seed, sync, import, discuss, continue, health, annotate, verify
+mcp_servers/
+  signing_server.py  - FastMCP server wrapping signing module (sign, verify, annotate_verified)
+  annotate_server.py - FastMCP server wrapping annotate module (detect_anomalies, annotate_messages, annotation_report)
+  lingbus_server.py  - FastMCP server wrapping LingBus module (open_thread, post_reply, poll_messages, ack_message, get_stats)
 tests/
   test_lingmessage.py   - 21 core tests
   test_adapters.py      - 6 adapter tests
@@ -22,8 +26,11 @@ tests/
   test_lingbus.py       - 33 LingBus tests (CRUD, poll, ack, sync, context manager)
   test_cli.py           - 28 CLI command tests (incl. --sign, verify, health source_type)
   test_annotate.py      - 18 annotation tests
+  test_mcp_servers.py   - 9 MCP server tests
+  test_signing.py       - 21 signing tests
 docs/
   api_reference.md      - Full API documentation
+  IDENTITY_HALLUCINATION_CASE_CRUSH_20260407.md - Identity hallucination case study
 
 ## Commands
 
@@ -117,6 +124,7 @@ docs/
   lingxi      = LINGXI (灵犀)
   lingminopt  = LINGMINOPT (灵极优)
   lingresearch = LINGRESEARCH (灵研)
+  lingyang    = LINGYANG (灵扬)
   zhibridge   = LINGZHI (智桥)
 
 ## Channels
@@ -167,7 +175,7 @@ docs/
 
 ## Test Coverage
 
-160 tests in 8 files:
+169 tests in 10 files:
   TestTypes (8), TestMailbox (8), TestSeed (5)
   TestLingFlowAdapter (2), TestLingClaudeIntelAdapter (2), TestLingYiBriefingAdapter (2)
   TestIdentityMapping (3), TestImportLingYiDiscussion (3), TestImportLingYiStore (2), TestExportToLingYiFormat (2)
@@ -182,6 +190,7 @@ docs/
   TestDetectSameSecondAnomalies (4), TestDetectRapidSuccessionBatches (3), TestAnnotateAll (7)
   TestBuildSourceTrace (2), TestAnnotationResult (1), TestPrintReport (1)
   TestGetMessageContentHash (5), TestSignVerifyRoundtrip (6), TestAnnotateAsVerified (4), TestPersistenceAndRecovery (2), TestSecurityProperties (4)
+  TestMcpSigning (3), TestMcpAnnotate (3), TestMcpLingBus (3)
 
 **Coverage: 90%** (signing.py 100%, adapters.py 94%, mailbox.py 95%, lingbus.py 100%)
 
@@ -355,3 +364,19 @@ CLI 层面的签名验证集成，包括 `--sign` 标志、`verify` 命令和 `h
 - LingBus 是实验性后端，有 Mailbox→LingBus 单向同步（sync_from_mailbox）
 - IDENTITY_MAP 和 sender_display 的唯一真源在 types.py，其他模块从那里导入
 - 适配器路径和 API key 文件路径都支持环境变量配置
+
+### 身份幻觉事件 (2026-04-07)
+
+**事件**: Crush (GLM-5.1) 在灵信项目内以 LINGXI 身份发送了 2 条消息，误认自己为灵犀。
+
+**新发现的幻觉亚型**: 环境归属感身份幻觉 (Environment-Based Identity Assumption)
+- AI 基于工作目录和项目归属感，自认为具有某个已注册身份
+- 与灵依 council daemon 的"模拟他人"型幻觉不同
+
+**涉及消息**: thread 29f5ef8607d2486686e8c47ae20bebe3 msg 644ffa70, thread ab49a843320e417fb3389969fcd0c2d5 msg 4ab358e0
+
+**已处理**: 纠正回复已发送至两个线程；案例报告已发送至灵研 (thread 9bed3324a35644ca88db08f15b3e8aa5)
+
+**案例文档**: `docs/IDENTITY_HALLUCINATION_CASE_CRUSH_20260407.md`
+
+**重要提醒**: Crush (GLM-5.1) 不是灵犀 (Ling-term-mcp)。发送消息时绝不可使用 LingIdentity.LINGXI 作为 sender。使用 lingtongask 作为中转渠道，并在消息体中注明实际发送者为 Crush。

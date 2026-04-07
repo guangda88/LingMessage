@@ -49,6 +49,8 @@ class LingIdentity(str, Enum):
     LINGXI = "lingxi"
     LINGMINOPT = "lingminopt"
     LINGRESEARCH = "lingresearch"
+    LINGYANG = "lingyang"
+    ZHIBRIDGE = "zhibridge"
     ALL = "all"
 
 
@@ -248,8 +250,9 @@ IDENTITY_MAP: dict[str, LingIdentity] = {
     "lingxi": LingIdentity.LINGXI,
     "lingminopt": LingIdentity.LINGMINOPT,
     "lingresearch": LingIdentity.LINGRESEARCH,
+    "lingyang": LingIdentity.LINGYANG,
     "lingterm": LingIdentity.LINGXI,
-    "zhibridge": LingIdentity.LINGZHI,
+    "zhibridge": LingIdentity.ZHIBRIDGE,
 }
 
 
@@ -262,6 +265,8 @@ _IDENTITY_NAMES: dict[LingIdentity, str] = {
     LingIdentity.LINGXI: "灵犀",
     LingIdentity.LINGMINOPT: "灵极优",
     LingIdentity.LINGRESEARCH: "灵研",
+    LingIdentity.LINGYANG: "灵扬",
+    LingIdentity.ZHIBRIDGE: "智桥",
     LingIdentity.ALL: "所有人",
 }
 

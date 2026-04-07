@@ -449,10 +449,6 @@ def cmd_continue(args: argparse.Namespace) -> None:
     print(f"  新发言成员: {', '.join(MEMBERS[s].name for s in result.speakers if s in MEMBERS)}")
 
 
-def _sender_display(identity: LingIdentity) -> str:
-    return sender_display(identity)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="lingmessage",
@@ -539,7 +535,14 @@ def main() -> None:
     }
     cmd_func = commands.get(args.command)
     if cmd_func:
-        cmd_func(args)
+        try:
+            cmd_func(args)
+        except ValueError as e:
+            print(f"错误: {e}", file=sys.stderr)
+            sys.exit(1)
+        except FileNotFoundError as e:
+            print(f"文件未找到: {e}", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

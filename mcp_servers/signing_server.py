@@ -3,14 +3,20 @@
 from fastmcp import FastMCP
 
 from lingmessage.signing import annotate_as_verified, sign_message, verify_signature
-from lingmessage.types import Channel, LingIdentity, MessageType, SourceType, create_message
+from lingmessage.types import (
+    Channel,
+    LingIdentity,
+    Message,
+    MessageType,
+    SourceType,
+    create_message,
+)
 
 mcp = FastMCP("lingmessage-signing")
 
 
-def _dict_to_message(data: dict) -> "Message":
+def _dict_to_message(data: dict) -> Message:
     """将字典转换为 Message 对象。"""
-    from lingmessage.types import Message
 
     if isinstance(data.get("source_type"), str):
         data["source_type"] = SourceType(data["source_type"])
