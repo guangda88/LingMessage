@@ -12,15 +12,16 @@ lingmessage/
   discuss.py        - Discussion engine (LLM-driven real discussions with member personas)
   lingbus.py        - SQLite WAL message bus (experimental backend, with Mailbox sync)
   signing.py        - Message signing and verification (HMAC-SHA256)
-  annotate.py       - Message annotation utilities
-  cli.py            - CLI: list, read, send, reply, stats, seed, sync, import, discuss, continue, health
+  annotate.py       - Historical source annotation (source_type + source_trace backfill)
+  cli.py            - CLI: list, read, send, reply, stats, seed, sync, import, discuss, continue, health, annotate, verify
 tests/
   test_lingmessage.py   - 21 core tests
   test_adapters.py      - 6 adapter tests
   test_compat.py        - 10 compat tests
   test_discuss.py       - 23 discuss engine tests
   test_lingbus.py       - 33 LingBus tests (CRUD, poll, ack, sync, context manager)
-  test_cli.py           - 18 CLI command tests
+  test_cli.py           - 28 CLI command tests (incl. --sign, verify, health source_type)
+  test_annotate.py      - 18 annotation tests
 docs/
   api_reference.md      - Full API documentation
 
@@ -36,6 +37,10 @@ docs/
   python3 -m lingmessage.cli discuss "议题标题" --initiator lingyi --rounds 2
   python3 -m lingmessage.cli continue <thread_id> --rounds 1
   python3 -m lingmessage.cli health [--verbose]
+  python3 -m lingmessage.cli annotate [--force]
+  python3 -m lingmessage.cli verify [thread_id] [--verbose]
+  python3 -m lingmessage.cli send --sender lingflow --recipients lingclaude --channel ecosystem --topic "topic" --subject "subj" --body "body" --sign
+  python3 -m lingmessage.cli reply <thread_id> --sender lingclaude --recipient lingflow --subject "re: subj" --body "body" --sign
 
 ## Key APIs
 
@@ -73,6 +78,13 @@ docs/
   sign_message(message, secret_key) -> str
   verify_signature(message, signature, secret_key) -> bool
   annotate_as_verified(message, signature) -> Message
+
+### Historical Annotation
+
+  from lingmessage.annotate import annotate_all
+  result = annotate_all(threads_dir, dry_run=True)  # preview
+  result = annotate_all(threads_dir, dry_run=False) # apply
+  # Or via CLI: python3 -m lingmessage.cli annotate [--force]
 
 ### Security & Reliability
 
@@ -155,7 +167,7 @@ docs/
 
 ## Test Coverage
 
-132 tests in 7 files:
+160 tests in 8 files:
   TestTypes (8), TestMailbox (8), TestSeed (5)
   TestLingFlowAdapter (2), TestLingClaudeIntelAdapter (2), TestLingYiBriefingAdapter (2)
   TestIdentityMapping (3), TestImportLingYiDiscussion (3), TestImportLingYiStore (2), TestExportToLingYiFormat (2)
@@ -164,8 +176,11 @@ docs/
   TestLingBusInit (4), TestLingBusClose (1), TestOpenThread (4), TestPostReply (4), TestPoll (3)
   TestGetThread (2), TestListThreads (3), TestAck (3), TestGetMaxRowid (3), TestStats (2)
   TestContextManager (1), TestSyncFromMailbox (3)
-  TestCmdList (3), TestCmdRead (2), TestCmdSend (1), TestCmdReply (1), TestCmdStats (2)
+  TestCmdList (3), TestCmdRead (2), TestCmdSend (2), TestCmdReply (2), TestCmdStats (2)
   TestCmdSeed (1), TestCmdSync (1), TestCmdImport (2), TestCmdDiscuss (1), TestCmdContinue (2), TestMainHelp (2)
+  TestCmdSendSigned (2), TestCmdReplySigned (2), TestCmdVerify (4), TestCmdHealthSourceType (2)
+  TestDetectSameSecondAnomalies (4), TestDetectRapidSuccessionBatches (3), TestAnnotateAll (7)
+  TestBuildSourceTrace (2), TestAnnotationResult (1), TestPrintReport (1)
   TestGetMessageContentHash (5), TestSignVerifyRoundtrip (6), TestAnnotateAsVerified (4), TestPersistenceAndRecovery (2), TestSecurityProperties (4)
 
 **Coverage: 90%** (signing.py 100%, adapters.py 94%, mailbox.py 95%, lingbus.py 100%)
@@ -202,7 +217,7 @@ docs/
    - 同一成员连续发言间隔至少1分钟
    - 每条回复必须明确响应对象
 
-### 实施完成情况（✅ Step 1 & Step 2 已完成并审计）
+### 实施完成情况（✅ 全部 4 步已完成）
 
 #### ✅ Step 1: types.py — 增加 SourceType 枚举 + Message 扩展（已完成并审计）
 
@@ -260,14 +275,58 @@ def annotate_as_verified(message: Message, signature: str) -> Message
 - ✅ metadata 篡改不影响验证（符合设计预期）
 - ✅ 签名验证具有常量时间复杂度（防时序攻击）
 
-#### ✅ Step 3: 历史数据标注（待实施）
+#### ✅ Step 3: 历史数据标注（已完成）
 
-遍历 ~/.lingmessage/threads/ 下所有消息：
-- 时间间隔异常（同秒多成员发言）→ source_type=GENERATED
-- 讨论引擎产出的 → source_type=INFERRED
-- 保留 source_trace 记录原始元数据
+重写 `annotate.py` 实现完整的消息来源标注，新增 CLI `annotate` 命令。
 
-#### ✅ Step 4: 测试更新（已完成并审计）
+**标注规则：**
+1. 已有 source_type → 跳过
+2. 同秒多成员发言 → GENERATED（身份幻觉）
+3. 快速连续多成员发言 (<60s) → INFERRED（讨论引擎）
+4. disc_* 讨论引擎线程 → INFERRED
+5. 其他 → INFERRED（历史回填）
+
+**实施结果（2026-04-07）：**
+- 扫描消息总数: 89
+- 已有标注（跳过）: 50
+- 新标注 GENERATED: 0（同秒异常已在 Step 2 中标注）
+- 新标注 INFERRED: 39
+- 未标注剩余: 0
+- 最终分布: inferred=54, generated=34, real=1
+
+**新增模块：**
+- `annotate.py` — `detect_same_second_anomalies()`, `detect_rapid_succession_batches()`, `annotate_all()`
+- `tests/test_annotate.py` — 18 个测试（异常检测、标注分类、dry-run/force、报告输出）
+
+**其他修复：**
+- CLI `_mb()` 路径扩展: `Path(args.mailbox)` → `Path(args.mailbox).expanduser()`
+
+#### ✅ Step 4: 部署签名验证 — CLI 集成（已完成）
+
+CLI 层面的签名验证集成，包括 `--sign` 标志、`verify` 命令和 `health` source_type 覆盖率检查。
+
+**新增 CLI 功能：**
+- `send --sign` 和 `reply --sign`：设置 source_type=VERIFIED，输出包含 `signed=true`
+- `verify [thread_id] [--verbose]`：消息验证报告，显示 VERIFIED/INFERRED/GENERATED 分布
+- `health` 命令新增 source_type 标注覆盖率检查（verbose 显示详细分布）
+
+**实现细节：**
+- `getattr(args, 'sign', False)` 模式兼容测试中不带 `sign` 属性的 Namespace 对象
+- `cmd_verify` 需要配置密钥（`LINGMESSAGE_SECRET_KEY` 或 `~/.lingmessage/.secret_key`）
+- `cmd_verify` 可指定单个 thread_id 或扫描全部讨论串
+- Health 的 source_type 检查直接读取原始 JSON 文件，捕获缺失的 source_type
+
+**新增测试：**
+- TestCmdSendSigned (2): --sign 设置 VERIFIED / 无 --sign 默认 INFERRED
+- TestCmdReplySigned (2): --sign 设置 VERIFIED / 无 --sign 默认 INFERRED
+- TestCmdVerify (4): 无密钥退出 / 消息计数 / verbose 输出 / 指定 thread_id
+- TestCmdHealthSourceType (2): source_type 覆盖率输出 / verbose 分布详情
+
+**测试统计：**
+- 总测试数：150 → 160（+10 CLI 集成测试）
+- 所有 160 个测试通过，0 回归
+
+#### ✅ Step 5: 测试更新（已完成并审计）
 
 新增测试文件 tests/test_signing.py：
 - test_sign_verify_roundtrip ✅
@@ -277,8 +336,8 @@ def annotate_as_verified(message: Message, signature: str) -> Message
 - 额外增加 17 个安全性和边界情况测试
 
 **测试统计：**
-- 总测试数：111 → 132（+21 个签名测试）
-- 覆盖率：90%（signing.py 100%）
+- 总测试数：111 → 160（+21 签名测试, +18 标注测试, +10 CLI 集成测试）
+- 覆盖率：90%（signing.py 100%, annotate.py 覆盖完整）
 - 代码质量：0 ruff 警告
 
 ### 相关线程
@@ -290,7 +349,7 @@ def annotate_as_verified(message: Message, signature: str) -> Message
 ### 注意事项
 
 - Message 是 frozen dataclass，新增字段需要默认值
-- 所有 111 个现有测试必须继续通过
+- 所有 160 个现有测试必须继续通过
 - discuss.py 中所有生成的消息应标记 source_type=INFERRED
 - CLI 的 read 命令有 bug：用 index.json 里的 id 查找线程时可能找不到（thread_id vs id 不一致），直接用 mailbox.load_thread_header() 是可靠的
 - LingBus 是实验性后端，有 Mailbox→LingBus 单向同步（sync_from_mailbox）
