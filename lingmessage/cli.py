@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from lingmessage.seed import seed_all
 from lingmessage.types import (
     Channel,
     LingIdentity,
+    SourceType,
     ThreadStatus,
     sender_display,
 )
@@ -41,7 +43,7 @@ def _validate_body(body: str) -> None:
 
 
 def _mb(args: argparse.Namespace) -> Mailbox:
-    return Mailbox(root=Path(args.mailbox))
+    return Mailbox(root=Path(args.mailbox).expanduser())
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -96,6 +98,12 @@ def cmd_send(args: argparse.Namespace) -> None:
     _validate_subject(args.subject)
     _validate_body(body)
 
+    source_type = SourceType.INFERRED
+    source_trace = ""
+    if getattr(args, 'sign', False):
+        source_type = SourceType.VERIFIED
+        source_trace = "signed_by:sender"
+
     header, msg = mb.open_thread(
         sender=sender,
         recipients=recipients,
@@ -103,8 +111,12 @@ def cmd_send(args: argparse.Namespace) -> None:
         topic=args.topic,
         subject=args.subject,
         body=body,
+        source_type=source_type,
+        source_trace=source_trace,
+        signature="",
     )
-    print(f"已发送 thread={header.thread_id} msg={msg.message_id}")
+    signed_flag = " signed=true" if getattr(args, 'sign', False) else ""
+    print(f"已发送 thread={header.thread_id} msg={msg.message_id}{signed_flag}")
 
 
 def cmd_reply(args: argparse.Namespace) -> None:
@@ -119,14 +131,24 @@ def cmd_reply(args: argparse.Namespace) -> None:
     _validate_subject(args.subject)
     _validate_body(body)
 
+    source_type = SourceType.INFERRED
+    source_trace = ""
+    if getattr(args, 'sign', False):
+        source_type = SourceType.VERIFIED
+        source_trace = "signed_by:sender"
+
     msg = mb.reply(
         thread_id=args.thread_id,
         sender=sender,
         recipient=recipient,
         subject=args.subject,
         body=body,
+        source_type=source_type,
+        source_trace=source_trace,
+        signature="",
     )
-    print(f"已回复 msg={msg.message_id}")
+    signed_flag = " signed=true" if getattr(args, 'sign', False) else ""
+    print(f"已回复 msg={msg.message_id}{signed_flag}")
 
 
 def cmd_stats(args: argparse.Namespace) -> None:
@@ -217,12 +239,103 @@ def cmd_health(args: argparse.Namespace) -> None:
     else:
         print("ℹ️  审计日志不存在")
 
+    # Check source_type annotation coverage
+    if threads_dir.exists():
+        from collections import Counter
+        source_types = Counter()
+        msg_count = 0
+        for thread_dir in threads_dir.iterdir():
+            if not thread_dir.is_dir():
+                continue
+            for msg_file in thread_dir.glob("msg_*.json"):
+                try:
+                    data = json.loads(msg_file.read_text(encoding="utf-8"))
+                    st = data.get("source_type", "<MISSING>")
+                    source_types[st] += 1
+                    msg_count += 1
+                except (json.JSONDecodeError, OSError):
+                    pass
+        if msg_count > 0:
+            missing = source_types.get("<MISSING>", 0)
+            if missing > 0:
+                print(f"⚠️  {missing}/{msg_count} 条消息缺少 source_type 标注")
+                issues_found = True
+            else:
+                print(f"✅ 所有 {msg_count} 条消息已标注 source_type")
+            if args.verbose:
+                for st, cnt in sorted(source_types.items()):
+                    print(f"    {st}: {cnt}")
+
     print("=" * 50)
     if issues_found:
         print("❌ 发现问题，建议修复")
         sys.exit(1)
     else:
         print("✅ 系统健康")
+
+
+def cmd_annotate(args: argparse.Namespace) -> None:
+    from lingmessage.annotate import annotate_all, print_report
+
+    mb = _mb(args)
+    threads_dir = mb._threads_dir()
+    dry_run = not args.force
+    if dry_run:
+        print("预览模式（不写入文件）。使用 --force 应用标注。\n")
+    result = annotate_all(threads_dir, dry_run=dry_run)
+    print_report(result)
+    if dry_run and (result.annotated_generated + result.annotated_inferred) > 0:
+        print("\n使用 --force 应用以上标注。")
+
+
+def cmd_verify(args: argparse.Namespace) -> None:
+    mb = _mb(args)
+    secret_key = mb._get_secret_key()
+    if not secret_key:
+        print("错误：未配置密钥（LINGMESSAGE_SECRET_KEY 或 ~/.lingmessage/.secret_key）", file=sys.stderr)
+        sys.exit(1)
+
+    threads_dir = mb._threads_dir()
+    if not threads_dir.exists():
+        print("无消息数据")
+        return
+
+    verified_count = 0
+    inferred_count = 0
+    generated_count = 0
+    unannotated_count = 0
+    total = 0
+
+    if args.thread_id:
+        thread_ids = [args.thread_id]
+    else:
+        thread_ids = [d.name for d in sorted(threads_dir.iterdir()) if d.is_dir()]
+
+    for tid in thread_ids:
+        messages = mb.load_thread_messages(tid)
+        for m in messages:
+            total += 1
+            if m.source_type == SourceType.VERIFIED:
+                verified_count += 1
+                if args.verbose:
+                    print(f"  VERIFIED {m.message_id[:12]} {sender_display(m.sender)}")
+            elif m.source_type == SourceType.INFERRED:
+                inferred_count += 1
+            elif m.source_type == SourceType.GENERATED:
+                generated_count += 1
+            else:
+                unannotated_count += 1
+
+    print("=== 消息验证报告 ===")
+    print(f"  总消息数: {total}")
+    print(f"  VERIFIED: {verified_count}")
+    print(f"  INFERRED: {inferred_count}")
+    print(f"  GENERATED: {generated_count}")
+    if unannotated_count:
+        print(f"  未标注: {unannotated_count}")
+    if args.verbose:
+        secret_key_config = "环境变量" if os.environ.get("LINGMESSAGE_SECRET_KEY") else "密钥文件"
+        print(f"  密钥来源: {secret_key_config}")
 
 
 def cmd_seed(args: argparse.Namespace) -> None:
@@ -363,6 +476,7 @@ def main() -> None:
     p_send.add_argument("--topic", required=True)
     p_send.add_argument("--subject", required=True)
     p_send.add_argument("--body", default="", help="正文，- 表示从 stdin 读取")
+    p_send.add_argument("--sign", action="store_true", help="签名消息（需要配置密钥）")
 
     p_reply = sub.add_parser("reply", help="回复讨论")
     p_reply.add_argument("thread_id")
@@ -370,6 +484,7 @@ def main() -> None:
     p_reply.add_argument("--recipient", required=True, choices=[i.value for i in LingIdentity])
     p_reply.add_argument("--subject", required=True)
     p_reply.add_argument("--body", default="", help="正文，- 表示从 stdin 读取")
+    p_reply.add_argument("--sign", action="store_true", help="签名消息（需要配置密钥）")
 
     sub.add_parser("stats", help="邮箱统计")
     sub.add_parser("seed", help="播种初始讨论")
@@ -395,6 +510,13 @@ def main() -> None:
     p_health = sub.add_parser("health", help="健康检查")
     p_health.add_argument("--verbose", "-v", action="store_true", help="显示详细信息")
 
+    p_annotate = sub.add_parser("annotate", help="历史数据标注")
+    p_annotate.add_argument("--force", action="store_true", help="应用标注（默认为预览模式）")
+
+    p_verify = sub.add_parser("verify", help="消息验证报告")
+    p_verify.add_argument("thread_id", nargs="?", default=None, help="指定讨论串（默认全部）")
+    p_verify.add_argument("--verbose", "-v", action="store_true", help="显示详细信息")
+
     args = parser.parse_args()
     if args.command is None:
         parser.print_help()
@@ -412,6 +534,8 @@ def main() -> None:
         "discuss": cmd_discuss,
         "continue": cmd_continue,
         "health": cmd_health,
+        "annotate": cmd_annotate,
+        "verify": cmd_verify,
     }
     cmd_func = commands.get(args.command)
     if cmd_func:

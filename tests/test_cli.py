@@ -12,6 +12,7 @@ import pytest
 from lingmessage.cli import (
     cmd_continue,
     cmd_discuss,
+    cmd_health,
     cmd_import,
     cmd_list,
     cmd_read,
@@ -20,10 +21,11 @@ from lingmessage.cli import (
     cmd_send,
     cmd_stats,
     cmd_sync,
+    cmd_verify,
     main,
 )
 from lingmessage.mailbox import Mailbox
-from lingmessage.types import Channel, LingIdentity
+from lingmessage.types import Channel, LingIdentity, SourceType
 
 
 def _ns(**kwargs) -> argparse.Namespace:
@@ -224,6 +226,169 @@ class TestCmdContinue:
         cmd_continue(args)
         out = capsys.readouterr().out
         assert "无法继续" in out
+
+
+class TestCmdSendSigned:
+    def test_send_with_sign_flag(self, mb_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        args = _ns(
+            command="send", mailbox=str(mb_path),
+            sender="lingflow", recipients="lingclaude",
+            channel="ecosystem", topic="signed topic",
+            subject="signed subj", body="signed body",
+            sign=True,
+        )
+        cmd_send(args)
+        out = capsys.readouterr().out
+        assert "已发送" in out
+        assert "signed=true" in out
+        mb = Mailbox(root=mb_path)
+        tid = mb.list_threads()[0].thread_id
+        msgs = mb.load_thread_messages(tid)
+        assert msgs[0].source_type == SourceType.VERIFIED
+
+    def test_send_without_sign_flag(self, mb_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        args = _ns(
+            command="send", mailbox=str(mb_path),
+            sender="lingflow", recipients="lingclaude",
+            channel="ecosystem", topic="unsigned topic",
+            subject="subj", body="body",
+        )
+        cmd_send(args)
+        out = capsys.readouterr().out
+        assert "已发送" in out
+        assert "signed=true" not in out
+        mb = Mailbox(root=mb_path)
+        tid = mb.list_threads()[0].thread_id
+        msgs = mb.load_thread_messages(tid)
+        assert msgs[0].source_type == SourceType.INFERRED
+
+
+class TestCmdReplySigned:
+    def test_reply_with_sign_flag(self, seeded_mb: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        mb = Mailbox(root=seeded_mb)
+        tid = mb.list_threads()[0].thread_id
+        args = _ns(
+            command="reply", mailbox=str(seeded_mb),
+            thread_id=tid, sender="lingclaude",
+            recipient="lingflow", subject="re: hello", body="signed reply",
+            sign=True,
+        )
+        cmd_reply(args)
+        out = capsys.readouterr().out
+        assert "已回复" in out
+        assert "signed=true" in out
+        msgs = mb.load_thread_messages(tid)
+        reply_msg = [m for m in msgs if m.message_type.value == "reply"][0]
+        assert reply_msg.source_type == SourceType.VERIFIED
+
+    def test_reply_without_sign_flag(self, seeded_mb: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        mb = Mailbox(root=seeded_mb)
+        tid = mb.list_threads()[0].thread_id
+        args = _ns(
+            command="reply", mailbox=str(seeded_mb),
+            thread_id=tid, sender="lingclaude",
+            recipient="lingflow", subject="re: hello", body="unsigned reply",
+        )
+        cmd_reply(args)
+        out = capsys.readouterr().out
+        assert "已回复" in out
+        assert "signed=true" not in out
+        msgs = mb.load_thread_messages(tid)
+        reply_msg = [m for m in msgs if m.message_type.value == "reply"][0]
+        assert reply_msg.source_type == SourceType.INFERRED
+
+
+class TestCmdVerify:
+    def test_verify_no_secret_key(self, mb_path: Path) -> None:
+        args = _ns(command="verify", mailbox=str(mb_path), thread_id=None, verbose=False)
+        with pytest.raises(SystemExit):
+            cmd_verify(args)
+
+    def test_verify_with_messages(self, mb_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        mb = Mailbox(root=mb_path)
+        mb.open_thread(
+            sender=LingIdentity.LINGFLOW,
+            recipients=(LingIdentity.LINGCLAUDE,),
+            channel=Channel.ECOSYSTEM,
+            topic="verify test",
+            subject="hello",
+            body="world",
+            source_type=SourceType.INFERRED,
+        )
+        args = _ns(command="verify", mailbox=str(mb_path), thread_id=None, verbose=False)
+        with patch.object(Mailbox, "_get_secret_key", return_value="test-key"):
+            cmd_verify(args)
+        out = capsys.readouterr().out
+        assert "消息验证报告" in out
+        assert "INFERRED: 1" in out
+
+    def test_verify_verbose(self, mb_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        mb = Mailbox(root=mb_path)
+        mb.open_thread(
+            sender=LingIdentity.LINGFLOW,
+            recipients=(LingIdentity.LINGCLAUDE,),
+            channel=Channel.ECOSYSTEM,
+            topic="verify verbose",
+            subject="hello",
+            body="world",
+            source_type=SourceType.VERIFIED,
+        )
+        args = _ns(command="verify", mailbox=str(mb_path), thread_id=None, verbose=True)
+        with patch.object(Mailbox, "_get_secret_key", return_value="test-key"):
+            cmd_verify(args)
+        out = capsys.readouterr().out
+        assert "VERIFIED" in out
+        assert "密钥来源" in out
+
+    def test_verify_specific_thread(self, mb_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        mb = Mailbox(root=mb_path)
+        header, _ = mb.open_thread(
+            sender=LingIdentity.LINGFLOW,
+            recipients=(LingIdentity.LINGCLAUDE,),
+            channel=Channel.ECOSYSTEM,
+            topic="specific thread",
+            subject="hello",
+            body="world",
+        )
+        args = _ns(command="verify", mailbox=str(mb_path), thread_id=header.thread_id, verbose=False)
+        with patch.object(Mailbox, "_get_secret_key", return_value="test-key"):
+            cmd_verify(args)
+        out = capsys.readouterr().out
+        assert "总消息数: 1" in out
+
+
+class TestCmdHealthSourceType:
+    def test_health_shows_source_type_coverage(self, mb_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        mb = Mailbox(root=mb_path)
+        mb.open_thread(
+            sender=LingIdentity.LINGFLOW,
+            recipients=(LingIdentity.LINGCLAUDE,),
+            channel=Channel.ECOSYSTEM,
+            topic="health test",
+            subject="hello",
+            body="world",
+            source_type=SourceType.INFERRED,
+        )
+        args = _ns(command="health", mailbox=str(mb_path), verbose=False)
+        cmd_health(args)
+        out = capsys.readouterr().out
+        assert "source_type" in out
+
+    def test_health_verbose_shows_distribution(self, mb_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        mb = Mailbox(root=mb_path)
+        mb.open_thread(
+            sender=LingIdentity.LINGFLOW,
+            recipients=(LingIdentity.LINGCLAUDE,),
+            channel=Channel.ECOSYSTEM,
+            topic="health verbose",
+            subject="hello",
+            body="world",
+            source_type=SourceType.INFERRED,
+        )
+        args = _ns(command="health", mailbox=str(mb_path), verbose=True)
+        cmd_health(args)
+        out = capsys.readouterr().out
+        assert "inferred:" in out
 
 
 class TestMainHelp:
