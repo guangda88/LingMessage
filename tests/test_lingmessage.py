@@ -106,7 +106,7 @@ class TestTypes:
         assert restored.message_count == 1
 
     def test_all_ling_identities(self) -> None:
-        assert len(LingIdentity) == 9
+        assert len(LingIdentity) == 10
 
     def test_all_message_types(self) -> None:
         assert len(MessageType) == 8
