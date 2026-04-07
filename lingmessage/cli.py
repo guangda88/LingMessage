@@ -156,7 +156,7 @@ def cmd_health(args: argparse.Namespace) -> None:
             import json
             data = json.loads(index_path.read_text(encoding="utf-8"))
             if not isinstance(data, dict) or "threads" not in data:
-                print(f"❌ 索引文件格式无效")
+                print("❌ 索引文件格式无效")
                 issues_found = True
             else:
                 print(f"✅ 索引文件正常 (包含 {len(data['threads'])} 个讨论串)")
@@ -173,11 +173,11 @@ def cmd_health(args: argparse.Namespace) -> None:
             if isinstance(data, dict) and "threads" in data:
                 print(f"✅ 备份文件正常 (包含 {len(data['threads'])} 个讨论串)")
             else:
-                print(f"⚠️  备份文件格式无效")
+                print("⚠️  备份文件格式无效")
         except (json.JSONDecodeError, OSError) as e:
             print(f"⚠️  备份文件损坏: {e}")
     else:
-        print(f"ℹ️  备份文件不存在")
+        print("ℹ️  备份文件不存在")
 
     # Check for orphaned message files
     threads_dir = mb._threads_dir()
@@ -197,11 +197,11 @@ def cmd_health(args: argparse.Namespace) -> None:
             if orphaned_count > 0:
                 print(f"⚠️  发现 {orphaned_count} 个孤立讨论串目录")
             else:
-                print(f"✅ 无孤立讨论串目录")
+                print("✅ 无孤立讨论串目录")
         except (json.JSONDecodeError, OSError) as e:
             print(f"⚠️  无法检查孤立文件: {e}")
     else:
-        print(f"ℹ️  threads 目录不存在")
+        print("ℹ️  threads 目录不存在")
 
     # Check audit log
     audit_path = mb._audit_path()
@@ -215,7 +215,7 @@ def cmd_health(args: argparse.Namespace) -> None:
         except OSError as e:
             print(f"⚠️  无法读取审计日志: {e}")
     else:
-        print(f"ℹ️  审计日志不存在")
+        print("ℹ️  审计日志不存在")
 
     print("=" * 50)
     if issues_found:
