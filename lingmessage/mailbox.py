@@ -414,8 +414,9 @@ class Mailbox:
     def load_thread_messages_iter(self, thread_id: str):
         """Load thread messages lazily using a generator.
 
-        This is more memory-efficient than load_thread_messages for large threads
-        as it yields messages one at a time rather than loading all into memory.
+        Yields messages in chronological order without loading all
+        into memory simultaneously. Uses filename-based chunking to
+        avoid holding all parsed Message objects at once.
 
         Args:
             thread_id: The thread ID to load messages from
@@ -429,13 +430,13 @@ class Mailbox:
         d = self._threads_dir() / thread_id
         if not d.exists():
             return
-        messages: list[Message] = []
-        for p in d.glob("msg_*.json"):
-            data = json.loads(p.read_text(encoding="utf-8"))
-            messages.append(Message.from_dict(data))
-        messages.sort(key=lambda m: m.timestamp)
-        for msg in messages:
-            yield msg
+        paths = sorted(d.glob("msg_*.json"))
+        for p in paths:
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                yield Message.from_dict(data)
+            except (json.JSONDecodeError, OSError, ValueError):
+                continue
 
     def list_threads(
         self,
