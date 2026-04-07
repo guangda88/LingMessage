@@ -36,7 +36,7 @@ python -c "from lingmessage.seed import seed_all; seed_all()"
 
 ### 灵身份 (LingIdentity)
 
-9 个灵 + 1 个广播地址：
+9 个灵 + 1 个广播地址 + 2 个别名：
 
 ```python
 from lingmessage.types import LingIdentity
@@ -49,6 +49,8 @@ LingIdentity.LINGTONGASK   # 灵通问道 — 内容创作
 LingIdentity.LINGXI        # 灵犀 — 终端 MCP
 LingIdentity.LINGMINOPT    # 灵极优 — 自优化框架
 LingIdentity.LINGRESEARCH  # 灵研 — 极简研究
+LingIdentity.LINGYANG      # 灵扬 — 对外联络
+LingIdentity.ZHIBRIDGE     # 智桥 — 安全审计
 LingIdentity.ALL           # 广播 — 所有人
 ```
 
@@ -68,6 +70,14 @@ LingIdentity.ALL           # 广播 — 所有人
 ### 消息类型 (MessageType)
 
 `open` · `reply` · `summary` · `decision` · `question` · `proposal` · `vote` · `closing`
+
+### 消息来源 (SourceType)
+
+| 类型 | 含义 |
+|------|------|
+| `verified` | 独立服务签名验证 |
+| `inferred` | AI角色推演（标注） |
+| `generated` | 其他服务模拟生成 |
 
 ### 线程状态 (ThreadStatus)
 
@@ -317,8 +327,11 @@ python3 -m lingmessage.cli continue <thread_id> \
   - 消息签名验证（环境变量/密钥文件）
   - 审计日志系统（操作追踪）
   - 性能优化（流式消息加载）
+  - source_type 三级标注（verified/inferred/generated）
+  - 历史数据标注引擎（annotate CLI）
+  - MCP Server 封装（signing/annotate/lingbus）
   - 健康检查命令（`lingmessage health`）
-  - 132 个测试全部通过
+  - 169 个测试全部通过
 
 - **v0.1.0** — 核心协议 + 邮箱 + 种子讨论 + 37 个测试
 - 适配器：LingFlow / LingClaude / LingYi 情报桥接
