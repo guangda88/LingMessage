@@ -143,6 +143,7 @@ docs/
   lingminopt  = LINGMINOPT (灵极优)
   lingresearch = LINGRESEARCH (灵研)
   lingyang    = LINGYANG (灵扬)
+  lingmessage = LINGMESSAGE (灵信)
   zhibridge   = LINGZHI (智桥)
 
 ## Channels

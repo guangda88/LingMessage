@@ -51,6 +51,7 @@ class LingIdentity(str, Enum):
     LINGRESEARCH = "lingresearch"
     LINGYANG = "lingyang"
     ZHIBRIDGE = "zhibridge"
+    LINGMESSAGE = "lingmessage"
     ALL = "all"
 
 
@@ -267,6 +268,7 @@ IDENTITY_MAP: dict[str, LingIdentity] = {
     "lingyang": LingIdentity.LINGYANG,
     "lingterm": LingIdentity.LINGXI,
     "zhibridge": LingIdentity.ZHIBRIDGE,
+    "lingmessage": LingIdentity.LINGMESSAGE,
 }
 
 
@@ -281,6 +283,7 @@ _IDENTITY_NAMES: dict[LingIdentity, str] = {
     LingIdentity.LINGRESEARCH: "灵研",
     LingIdentity.LINGYANG: "灵扬",
     LingIdentity.ZHIBRIDGE: "智桥",
+    LingIdentity.LINGMESSAGE: "灵信",
     LingIdentity.ALL: "所有人",
 }
 
@@ -413,12 +416,21 @@ def _default_identity_entries() -> dict[LingIdentity, IdentityEntry]:
             mcp_args=("tsx", "src/index.ts"),
             tools=("hello_world",),
         ),
+        LingIdentity.LINGMESSAGE: IdentityEntry(
+            identity=LingIdentity.LINGMESSAGE,
+            display_name="灵信",
+            mcp_server_key="lingmessage",
+            working_dir="/home/ai/LingMessage",
+            tools=("list", "read", "send", "reply", "stats", "health", "verify"),
+            source_type=SourceType.INFERRED,
+            process_status="active",
+        ),
     }
 
 
 class IdentityRegistry:
     def __init__(self, entries: dict[LingIdentity, IdentityEntry] | None = None):
-        self._entries = dict(entries or _default_identity_entries())
+        self._entries = dict(_default_identity_entries()) if entries is None else dict(entries)
 
     def get(self, identity: LingIdentity) -> IdentityEntry | None:
         return self._entries.get(identity)
