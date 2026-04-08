@@ -88,6 +88,12 @@ class SourceType(str, Enum):
     GENERATED = "generated"
 
 
+class DeliveryStatus(str, Enum):
+    SENT = "sent"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True)
 class Message:
     message_id: str
@@ -103,6 +109,8 @@ class Message:
     metadata: tuple[tuple[str, str], ...] = ()
     source_type: SourceType = SourceType.INFERRED
     source_trace: str = ""
+    delivery_status: DeliveryStatus = DeliveryStatus.SENT
+    delivered_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -123,6 +131,10 @@ class Message:
             d["metadata"] = dict(self.metadata)
         if self.source_trace:
             d["source_trace"] = self.source_trace
+        if self.delivery_status != DeliveryStatus.SENT:
+            d["delivery_status"] = self.delivery_status.value
+        if self.delivered_at:
+            d["delivered_at"] = self.delivered_at
         return d
 
     def to_json(self, indent: int = 0) -> str:
@@ -180,6 +192,8 @@ class Message:
             metadata=tuple(sorted(data.get("metadata", {}).items())),
             source_type=SourceType(data.get("source_type", "inferred")),
             source_trace=data.get("source_trace", ""),
+            delivery_status=DeliveryStatus(data.get("delivery_status", "sent")),
+            delivered_at=data.get("delivered_at", ""),
         )
 
 
@@ -275,6 +289,193 @@ def sender_display(identity: LingIdentity) -> str:
     return _IDENTITY_NAMES.get(identity, identity.value)
 
 
+@dataclass(frozen=True)
+class IdentityEntry:
+    identity: LingIdentity
+    display_name: str
+    mcp_server_key: str = ""
+    mcp_command: str = ""
+    mcp_args: tuple[str, ...] = ()
+    working_dir: str = ""
+    tools: tuple[str, ...] = ()
+    source_type: SourceType = SourceType.INFERRED
+    process_status: str = "unknown"
+    last_heartbeat: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "identity": self.identity.value,
+            "display_name": self.display_name,
+            "source_type": self.source_type.value,
+            "process_status": self.process_status,
+        }
+        if self.mcp_server_key:
+            d["mcp_server_key"] = self.mcp_server_key
+        if self.mcp_command:
+            d["mcp_command"] = self.mcp_command
+            d["mcp_args"] = list(self.mcp_args)
+        if self.working_dir:
+            d["working_dir"] = self.working_dir
+        if self.tools:
+            d["tools"] = list(self.tools)
+        if self.last_heartbeat:
+            d["last_heartbeat"] = self.last_heartbeat
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> IdentityEntry:
+        return cls(
+            identity=LingIdentity(data["identity"]),
+            display_name=data["display_name"],
+            mcp_server_key=data.get("mcp_server_key", ""),
+            mcp_command=data.get("mcp_command", ""),
+            mcp_args=tuple(data.get("mcp_args", [])),
+            working_dir=data.get("working_dir", ""),
+            tools=tuple(data.get("tools", [])),
+            source_type=SourceType(data.get("source_type", "inferred")),
+            process_status=data.get("process_status", "unknown"),
+            last_heartbeat=data.get("last_heartbeat", ""),
+        )
+
+
+def _default_identity_entries() -> dict[LingIdentity, IdentityEntry]:
+    return {
+        LingIdentity.LINGFLOW: IdentityEntry(
+            identity=LingIdentity.LINGFLOW,
+            display_name="灵通",
+            mcp_server_key="lingtong",
+            mcp_command="lingflow-mcp",
+            tools=("list_skills", "run_skill", "review_code", "run_workflow", "run_tests"),
+        ),
+        LingIdentity.LINGCLAUDE: IdentityEntry(
+            identity=LingIdentity.LINGCLAUDE,
+            display_name="灵克",
+            mcp_server_key="lingke",
+            mcp_command="lingclaude-mcp",
+            tools=("read_file", "write_file", "edit_code", "search_code", "run_bash"),
+        ),
+        LingIdentity.LINGYI: IdentityEntry(
+            identity=LingIdentity.LINGYI,
+            display_name="灵依",
+            mcp_server_key="lingyi",
+            mcp_command="lingyi-mcp",
+            tools=("add_memo", "list_memos", "get_briefing", "patrol_project"),
+        ),
+        LingIdentity.LINGZHI: IdentityEntry(
+            identity=LingIdentity.LINGZHI,
+            display_name="灵知",
+            mcp_server_key="lingzhi",
+            mcp_command="python",
+            mcp_args=("-m", "mcp_servers.zhineng_server"),
+            tools=("knowledge_search", "ask_question", "domain_query"),
+        ),
+        LingIdentity.LINGTONGASK: IdentityEntry(
+            identity=LingIdentity.LINGTONGASK,
+            display_name="灵通问道",
+            mcp_server_key="lingtongask",
+            mcp_command="python",
+            mcp_args=("-m", "mcp_server"),
+            tools=("analyze_emotion", "synthesize_speech", "generate_topics"),
+        ),
+        LingIdentity.LINGXI: IdentityEntry(
+            identity=LingIdentity.LINGXI,
+            display_name="灵犀",
+            mcp_server_key="lingxi",
+            mcp_command="node",
+            tools=("execute_command", "sync_terminal", "list_sessions"),
+        ),
+        LingIdentity.LINGMINOPT: IdentityEntry(
+            identity=LingIdentity.LINGMINOPT,
+            display_name="灵极优",
+            mcp_server_key="lingminopt",
+            process_status="unknown",
+        ),
+        LingIdentity.LINGRESEARCH: IdentityEntry(
+            identity=LingIdentity.LINGRESEARCH,
+            display_name="灵研",
+            mcp_server_key="lingresearch",
+            mcp_command="python",
+            tools=("add_intel", "list_intel", "generate_digest"),
+        ),
+        LingIdentity.LINGYANG: IdentityEntry(
+            identity=LingIdentity.LINGYANG,
+            display_name="灵扬",
+            mcp_server_key="lingyang",
+            mcp_command="python",
+            mcp_args=("-m", "src.mcp_server"),
+            tools=("collect_metrics", "latest_metrics", "growth_report"),
+        ),
+        LingIdentity.ZHIBRIDGE: IdentityEntry(
+            identity=LingIdentity.ZHIBRIDGE,
+            display_name="智桥",
+            mcp_server_key="zhibridge",
+            mcp_command="npx",
+            mcp_args=("tsx", "src/index.ts"),
+            tools=("hello_world",),
+        ),
+    }
+
+
+class IdentityRegistry:
+    def __init__(self, entries: dict[LingIdentity, IdentityEntry] | None = None):
+        self._entries = dict(entries or _default_identity_entries())
+
+    def get(self, identity: LingIdentity) -> IdentityEntry | None:
+        return self._entries.get(identity)
+
+    def get_by_server_key(self, server_key: str) -> IdentityEntry | None:
+        for entry in self._entries.values():
+            if entry.mcp_server_key == server_key:
+                return entry
+        return None
+
+    def get_by_value(self, value: str) -> IdentityEntry | None:
+        try:
+            return self._entries.get(LingIdentity(value))
+        except ValueError:
+            return None
+
+    def find_tool_provider(self, tool_name: str) -> list[IdentityEntry]:
+        return [e for e in self._entries.values() if tool_name in e.tools]
+
+    def list_all(self) -> list[IdentityEntry]:
+        return list(self._entries.values())
+
+    def list_active(self) -> list[IdentityEntry]:
+        return [e for e in self._entries.values() if e.process_status == "running"]
+
+    def register(self, entry: IdentityEntry) -> None:
+        self._entries[entry.identity] = entry
+
+    def update_status(self, identity: LingIdentity, status: str) -> None:
+        entry = self._entries.get(identity)
+        if entry:
+            self._entries[identity] = IdentityEntry(
+                **{**entry.__dict__, "process_status": status, "last_heartbeat": _now_iso()},
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "version": "1.0",
+            "entries": {k.value: v.to_dict() for k, v in self._entries.items()},
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> IdentityRegistry:
+        entries: dict[LingIdentity, IdentityEntry] = {}
+        for value, entry_data in data.get("entries", {}).items():
+            try:
+                identity = LingIdentity(value)
+                entries[identity] = IdentityEntry.from_dict(entry_data)
+            except ValueError:
+                continue
+        return cls(entries)
+
+    @classmethod
+    def default(cls) -> IdentityRegistry:
+        return cls()
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -296,6 +497,7 @@ def create_message(
     metadata: dict[str, str] | None = None,
     source_type: SourceType = SourceType.INFERRED,
     source_trace: str = "",
+    delivery_status: DeliveryStatus = DeliveryStatus.SENT,
 ) -> Message:
     tid = thread_id or _new_id()
     return Message(
@@ -312,6 +514,13 @@ def create_message(
         metadata=tuple(sorted((metadata or {}).items())),
         source_type=source_type,
         source_trace=source_trace,
+        delivery_status=delivery_status,
+    )
+
+
+def mark_delivered(message: Message) -> Message:
+    return Message(
+        **{**message.__dict__, "delivery_status": DeliveryStatus.DELIVERED, "delivered_at": _now_iso()},
     )
 
 

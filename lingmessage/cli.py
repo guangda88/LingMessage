@@ -159,6 +159,8 @@ def cmd_stats(args: argparse.Namespace) -> None:
     print(f"频道分布: {json.dumps(s['by_channel'], ensure_ascii=False)}")
     print(f"状态分布: {json.dumps(s['by_status'], ensure_ascii=False)}")
     print(f"最后更新: {s['last_updated']}")
+    ds = mb.get_delivery_stats()
+    print(f"送达统计: 已送达={ds['delivered']} 待送达={ds['pending']} 失败={ds['failed']} 送达率={ds['delivery_rate']:.1%}")
 
 
 def cmd_health(args: argparse.Namespace) -> None:
@@ -449,6 +451,21 @@ def cmd_continue(args: argparse.Namespace) -> None:
     print(f"  新发言成员: {', '.join(MEMBERS[s].name for s in result.speakers if s in MEMBERS)}")
 
 
+def cmd_poll(args: argparse.Namespace) -> None:
+    from lingmessage.poller import DiscussionPoller
+
+    poller = DiscussionPoller(mailbox=_mb(args))
+
+    if args.poll_once:
+        result = poller.scan_once()
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    elif args.poll_init:
+        poller.init_existing()
+        print(f"Initialized: marked {poller._stats.get('init_marked', 0)} participants as scanned")
+    else:
+        poller.run(interval=args.interval)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="lingmessage",
@@ -503,6 +520,11 @@ def main() -> None:
     p_continue.add_argument("--rounds", type=int, default=1, help="额外轮数")
     p_continue.add_argument("--speakers", type=int, default=2, help="每轮发言人数")
 
+    p_poll = sub.add_parser("poll", help="议事轮询守护进程")
+    p_poll.add_argument("--once", dest="poll_once", action="store_true", help="单次扫描后退出")
+    p_poll.add_argument("--init", dest="poll_init", action="store_true", help="初始化：标记所有现有讨论为已扫描")
+    p_poll.add_argument("--interval", type=int, default=300, help="轮询间隔（秒），默认 300")
+
     p_health = sub.add_parser("health", help="健康检查")
     p_health.add_argument("--verbose", "-v", action="store_true", help="显示详细信息")
 
@@ -532,6 +554,7 @@ def main() -> None:
         "health": cmd_health,
         "annotate": cmd_annotate,
         "verify": cmd_verify,
+        "poll": cmd_poll,
     }
     cmd_func = commands.get(args.command)
     if cmd_func:

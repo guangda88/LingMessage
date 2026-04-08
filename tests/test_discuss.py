@@ -28,6 +28,7 @@ class TestMemberPersona:
         expected = [
             "lingflow", "lingclaude", "lingzhi", "lingyi",
             "lingtongask", "lingxi", "lingminopt", "lingresearch",
+            "zhibridge",
         ]
         for mid in expected:
             assert mid in MEMBERS, f"Missing persona for {mid}"

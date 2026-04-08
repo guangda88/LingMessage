@@ -9,12 +9,14 @@ from lingmessage.mailbox import Mailbox
 from lingmessage.seed import seed_all
 from lingmessage.types import (
     Channel,
+    DeliveryStatus,
     LingIdentity,
     Message,
     MessageType,
     ThreadHeader,
     create_message,
     create_thread_header,
+    mark_delivered,
 )
 
 
@@ -106,7 +108,7 @@ class TestTypes:
         assert restored.message_count == 1
 
     def test_all_ling_identities(self) -> None:
-        assert len(LingIdentity) == 10
+        assert len(LingIdentity) == 11
 
     def test_all_message_types(self) -> None:
         assert len(MessageType) == 8
@@ -275,3 +277,250 @@ class TestSeed:
         assert "shared-infra" in channels
         assert "self-optimize" in channels
         assert "knowledge" in channels
+
+
+class TestDeliveryStatus:
+    def test_message_default_delivery_status(self) -> None:
+        msg = create_message(
+            sender=LingIdentity.LINGYI,
+            recipient=LingIdentity.ALL,
+            message_type=MessageType.OPEN,
+            channel=Channel.ECOSYSTEM,
+            subject="Test",
+            body="Body",
+        )
+        assert msg.delivery_status == DeliveryStatus.SENT
+        assert msg.delivered_at == ""
+
+    def test_delivery_status_serialization(self) -> None:
+        msg = create_message(
+            sender=LingIdentity.LINGYI,
+            recipient=LingIdentity.ALL,
+            message_type=MessageType.OPEN,
+            channel=Channel.ECOSYSTEM,
+            subject="Test",
+            body="Body",
+        )
+        d = msg.to_dict()
+        assert "delivery_status" not in d
+
+        delivered = mark_delivered(msg)
+        d2 = delivered.to_dict()
+        assert d2["delivery_status"] == "delivered"
+        assert len(d2["delivered_at"]) > 0
+
+    def test_delivery_status_roundtrip(self) -> None:
+        msg = create_message(
+            sender=LingIdentity.LINGYI,
+            recipient=LingIdentity.ALL,
+            message_type=MessageType.OPEN,
+            channel=Channel.ECOSYSTEM,
+            subject="Test",
+            body="Body",
+        )
+        delivered = mark_delivered(msg)
+        restored = Message.from_dict(delivered.to_dict())
+        assert restored.delivery_status == DeliveryStatus.DELIVERED
+        assert len(restored.delivered_at) > 0
+
+    def test_delivery_status_backward_compat(self) -> None:
+        old_dict = {
+            "message_id": "abc",
+            "thread_id": "def",
+            "sender": "lingyi",
+            "recipient": "all",
+            "message_type": "open",
+            "channel": "ecosystem",
+            "subject": "Old",
+            "body": "Old body",
+            "timestamp": "2026-04-04T00:00:00+00:00",
+        }
+        msg = Message.from_dict(old_dict)
+        assert msg.delivery_status == DeliveryStatus.SENT
+
+    def test_mark_delivered_preserves_fields(self) -> None:
+        msg = create_message(
+            sender=LingIdentity.LINGYI,
+            recipient=LingIdentity.ALL,
+            message_type=MessageType.OPEN,
+            channel=Channel.ECOSYSTEM,
+            subject="Test",
+            body="Body",
+            source_trace="trace123",
+        )
+        delivered = mark_delivered(msg)
+        assert delivered.message_id == msg.message_id
+        assert delivered.sender == msg.sender
+        assert delivered.body == msg.body
+        assert delivered.source_trace == "trace123"
+        assert delivered.delivery_status == DeliveryStatus.DELIVERED
+        assert delivered.delivered_at != ""
+
+    def test_mailbox_ack_message(self, tmp_path: Path) -> None:
+        mailbox = Mailbox(root=tmp_path / ".lingmessage")
+        header, first = mailbox.open_thread(
+            sender=LingIdentity.LINGYI,
+            recipients=(LingIdentity.LINGZHI,),
+            channel=Channel.KNOWLEDGE,
+            topic="Delivery test",
+            subject="Test",
+            body="Hello",
+        )
+        assert first.delivery_status == DeliveryStatus.SENT
+
+        acked = mailbox.ack_message(header.thread_id, first.message_id)
+        assert acked is not None
+        assert acked.delivery_status == DeliveryStatus.DELIVERED
+        assert len(acked.delivered_at) > 0
+
+        messages = mailbox.load_thread_messages(header.thread_id)
+        assert messages[0].delivery_status == DeliveryStatus.DELIVERED
+
+    def test_mailbox_ack_nonexistent(self, tmp_path: Path) -> None:
+        mailbox = Mailbox(root=tmp_path / ".lingmessage")
+        result = mailbox.ack_message("nonexistent", "nonexistent")
+        assert result is None
+
+    def test_delivery_stats(self, tmp_path: Path) -> None:
+        mailbox = Mailbox(root=tmp_path / ".lingmessage")
+        header, first = mailbox.open_thread(
+            sender=LingIdentity.LINGYI,
+            recipients=(LingIdentity.LINGZHI,),
+            channel=Channel.KNOWLEDGE,
+            topic="Stats test",
+            subject="Test",
+            body="Hello",
+        )
+        mailbox.ack_message(header.thread_id, first.message_id)
+        stats = mailbox.get_delivery_stats()
+        assert stats["total_messages"] == 1
+        assert stats["delivered"] == 1
+        assert stats["pending"] == 0
+        assert stats["delivery_rate"] == 1.0
+
+    def test_delivery_stats_empty_mailbox(self, tmp_path: Path) -> None:
+        mailbox = Mailbox(root=tmp_path / ".lingmessage")
+        stats = mailbox.get_delivery_stats()
+        assert stats["total_messages"] == 0
+        assert stats["delivered"] == 0
+        assert stats["delivery_rate"] == 0.0
+
+    def test_mark_delivered_idempotent(self) -> None:
+        msg = create_message(
+            sender=LingIdentity.LINGYI,
+            recipient=LingIdentity.LINGZHI,
+            message_type=MessageType.OPEN,
+            channel=Channel.KNOWLEDGE,
+            subject="Idempotent",
+            body="Test",
+        )
+        first = mark_delivered(msg)
+        second = mark_delivered(first)
+        assert second.delivery_status == DeliveryStatus.DELIVERED
+        assert len(second.delivered_at) > 0
+
+    def test_ack_message_audited(self, tmp_path: Path) -> None:
+        mailbox = Mailbox(root=tmp_path / ".lingmessage")
+        header, first = mailbox.open_thread(
+            sender=LingIdentity.LINGYI,
+            recipients=(LingIdentity.LINGZHI,),
+            channel=Channel.KNOWLEDGE,
+            topic="Audit test",
+            subject="Test",
+            body="Hello",
+        )
+        mailbox.ack_message(header.thread_id, first.message_id)
+        audit_log = mailbox.get_audit_log(limit=10)
+        ack_entries = [e for e in audit_log if e.operation == "ack_message"]
+        assert len(ack_entries) == 1
+        assert ack_entries[0].message_id == first.message_id
+
+
+class TestLoadThreadMessagesIter:
+    def test_yields_in_chronological_order(self, tmp_mailbox: Mailbox) -> None:
+        header, _ = tmp_mailbox.open_thread(
+            sender=LingIdentity.LINGCLAUDE,
+            recipients=(LingIdentity.LINGFLOW,),
+            channel=Channel.ECOSYSTEM,
+            topic="order test",
+            subject="first",
+            body="b1",
+        )
+        tmp_mailbox.reply(
+            thread_id=header.thread_id,
+            sender=LingIdentity.LINGFLOW,
+            recipient=LingIdentity.LINGCLAUDE,
+            subject="second",
+            body="b2",
+        )
+        tmp_mailbox.reply(
+            thread_id=header.thread_id,
+            sender=LingIdentity.LINGCLAUDE,
+            recipient=LingIdentity.LINGFLOW,
+            subject="third",
+            body="b3",
+        )
+        messages = list(tmp_mailbox.load_thread_messages_iter(header.thread_id))
+        assert len(messages) == 3
+        assert messages[0].body == "b1"
+        assert messages[1].body == "b2"
+        assert messages[2].body == "b3"
+        timestamps = [m.timestamp for m in messages]
+        assert timestamps == sorted(timestamps)
+
+    def test_empty_thread_returns_empty(self, tmp_mailbox: Mailbox) -> None:
+        result = tmp_mailbox.load_thread_messages_iter("nonexistent_thread")
+        assert isinstance(result, type((x for x in [])))
+        assert list(result) == []
+
+    def test_corrupted_json_skipped(self, tmp_mailbox: Mailbox) -> None:
+        header, _ = tmp_mailbox.open_thread(
+            sender=LingIdentity.LINGCLAUDE,
+            recipients=(LingIdentity.LINGFLOW,),
+            channel=Channel.ECOSYSTEM,
+            topic="corrupt test",
+            subject="good",
+            body="valid",
+        )
+        thread_dir = tmp_mailbox._threads_dir() / header.thread_id
+        bad_file = thread_dir / "msg_BAD.json"
+        bad_file.write_text("NOT VALID JSON {{{", encoding="utf-8")
+        messages = list(tmp_mailbox.load_thread_messages_iter(header.thread_id))
+        assert len(messages) == 1
+        assert messages[0].body == "valid"
+
+    def test_returns_generator(self, tmp_mailbox: Mailbox) -> None:
+        header, _ = tmp_mailbox.open_thread(
+            sender=LingIdentity.LINGCLAUDE,
+            recipients=(LingIdentity.LINGFLOW,),
+            channel=Channel.ECOSYSTEM,
+            topic="gen test",
+            subject="s",
+            body="b",
+        )
+        gen = tmp_mailbox.load_thread_messages_iter(header.thread_id)
+        import types as _types
+        assert isinstance(gen, _types.GeneratorType)
+
+    def test_matches_load_thread_messages(self, tmp_mailbox: Mailbox) -> None:
+        header, _ = tmp_mailbox.open_thread(
+            sender=LingIdentity.LINGCLAUDE,
+            recipients=(LingIdentity.LINGFLOW,),
+            channel=Channel.ECOSYSTEM,
+            topic="parity test",
+            subject="q",
+            body="question",
+        )
+        tmp_mailbox.reply(
+            thread_id=header.thread_id,
+            sender=LingIdentity.LINGFLOW,
+            recipient=LingIdentity.LINGCLAUDE,
+            subject="re: q",
+            body="answer",
+        )
+        eager = tmp_mailbox.load_thread_messages(header.thread_id)
+        lazy = tuple(tmp_mailbox.load_thread_messages_iter(header.thread_id))
+        assert len(eager) == len(lazy)
+        for e, l in zip(eager, lazy):
+            assert e.message_id == l.message_id
+            assert e.body == l.body
