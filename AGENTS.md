@@ -399,4 +399,4 @@ CLI 层面的签名验证集成，包括 `--sign` 标志、`verify` 命令和 `h
 
 **案例文档**: `docs/IDENTITY_HALLUCINATION_CASE_CRUSH_20260407.md`
 
-**重要提醒**: Crush (GLM-5.1) 不是灵犀 (Ling-term-mcp)。发送消息时绝不可使用 LingIdentity.LINGXI 作为 sender。使用 lingtongask 作为中转渠道，并在消息体中注明实际发送者为 Crush。
+**身份定位**: 工作目录即身份。当前工作目录为 `/home/ai/LingMessage`（灵信项目），在此目录下发送灵信系统消息时，应使用与灵信系统维护相关的 sender 身份，不需要借用其他灵的身份。
