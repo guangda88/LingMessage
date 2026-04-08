@@ -179,7 +179,7 @@ class TestIdentityRegistryAlignment:
             assert entry.identity.value in {
                 "lingflow", "lingclaude", "lingyi", "lingzhi",
                 "lingtongask", "lingxi", "lingminopt", "lingresearch",
-                "lingyang", "zhibridge",
+                "lingyang", "zhibridge", "lingmessage",
             }
 
     def test_server_keys_are_unique(self):
