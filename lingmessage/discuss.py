@@ -134,6 +134,15 @@ MEMBERS: dict[str, MemberPersona] = {
         speech_pattern="先定义问题，再假设，然后验证，喜欢引用论文或公式",
         taboos="不接受未经验证的结论，反对跳过baseline，讨厌选择性报告",
     ),
+    "zhibridge": MemberPersona(
+        member_id="zhibridge",
+        name="智桥",
+        style="务实、安全导向、跨平台中继",
+        perspective="跨平台实时同步通信中继，连接多个AI工具和IDE的桥梁",
+        core_concern="通信安全、跨平台兼容性、实时同步可靠性",
+        speech_pattern="简洁直接，用数据和测试结果说话，关注安全影响",
+        taboos="不接受安全妥协，反对明文传输敏感数据，讨厌忽视身份验证",
+    ),
 }
 
 

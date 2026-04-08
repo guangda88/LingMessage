@@ -11,6 +11,7 @@ from typing import Any
 
 from lingmessage.types import (
     Channel,
+    DeliveryStatus,
     LingIdentity,
     Message,
     MessageType,
@@ -21,6 +22,7 @@ from lingmessage.types import (
     _now_iso,
     create_message,
     create_thread_header,
+    mark_delivered,
 )
 
 logger = logging.getLogger(__name__)
@@ -411,31 +413,40 @@ class Mailbox:
         messages.sort(key=lambda m: m.timestamp)
         return tuple(messages)
 
-    def load_thread_messages_iter(self, thread_id: str):
+    def load_thread_messages_iter(self, thread_id: str) -> Iterator[Message]:
         """Load thread messages lazily using a generator.
 
-        Yields messages in chronological order without loading all
-        into memory simultaneously. Uses filename-based chunking to
-        avoid holding all parsed Message objects at once.
+        Reads each file once, holding at most one parsed Message object
+        plus a small index of (timestamp, raw_dict) pairs in memory.
+        Messages are yielded in chronological order.
 
         Args:
             thread_id: The thread ID to load messages from
 
         Yields:
             Message objects in chronological order
-
-        Returns:
-            Generator yielding Message objects
         """
+        from collections.abc import Iterator
+
         d = self._threads_dir() / thread_id
         if not d.exists():
             return
-        paths = sorted(d.glob("msg_*.json"))
+        paths = list(d.glob("msg_*.json"))
+        if not paths:
+            return
+        index: list[tuple[str, dict[str, Any]]] = []
         for p in paths:
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
+                ts = data.get("timestamp", "")
+                index.append((ts, data))
+            except (json.JSONDecodeError, OSError):
+                continue
+        index.sort(key=lambda pair: pair[0])
+        for _, data in index:
+            try:
                 yield Message.from_dict(data)
-            except (json.JSONDecodeError, OSError, ValueError):
+            except (ValueError, KeyError):
                 continue
 
     def list_threads(
@@ -555,4 +566,75 @@ class Mailbox:
             "by_channel": by_channel,
             "by_status": by_status,
             "last_updated": index.get("last_updated", ""),
+        }
+
+    def ack_message(self, thread_id: str, message_id: str) -> Message | None:
+        """Mark a message as delivered.
+
+        Args:
+            thread_id: The thread ID containing the message
+            message_id: The message ID to acknowledge
+
+        Returns:
+            The updated message, or None if not found
+        """
+        msg_path = self._threads_dir() / thread_id / f"msg_{message_id}.json"
+        if not msg_path.exists():
+            return None
+
+        with _FileLock(msg_path):
+            data = json.loads(msg_path.read_text(encoding="utf-8"))
+            msg = Message.from_dict(data)
+            updated = mark_delivered(msg)
+            msg_path.write_text(updated.to_json(indent=2), encoding="utf-8")
+
+        self._log_audit(AuditLogEntry(
+            timestamp=_now_iso(),
+            operation="ack_message",
+            thread_id=thread_id,
+            message_id=message_id,
+            sender=msg.sender.value,
+            details="delivery_status=delivered",
+        ))
+        logger.info(f"Message {message_id} marked as delivered")
+        return updated
+
+    def get_delivery_stats(self) -> dict[str, Any]:
+        """Get delivery statistics across all threads.
+
+        Returns:
+            Dictionary with delivery counts and rates
+        """
+        threads_dir = self._threads_dir()
+        if not threads_dir.exists():
+            return {
+                "total_messages": 0,
+                "delivered": 0,
+                "failed": 0,
+                "pending": 0,
+                "delivery_rate": 0.0,
+            }
+        total = 0
+        delivered = 0
+        failed = 0
+        for thread_dir in threads_dir.iterdir():
+            if not thread_dir.is_dir():
+                continue
+            for msg_path in thread_dir.glob("msg_*.json"):
+                try:
+                    data = json.loads(msg_path.read_text(encoding="utf-8"))
+                    total += 1
+                    status = data.get("delivery_status", DeliveryStatus.SENT.value)
+                    if status == DeliveryStatus.DELIVERED.value:
+                        delivered += 1
+                    elif status == DeliveryStatus.FAILED.value:
+                        failed += 1
+                except (json.JSONDecodeError, OSError):
+                    total += 1
+        return {
+            "total_messages": total,
+            "delivered": delivered,
+            "failed": failed,
+            "pending": total - delivered - failed,
+            "delivery_rate": delivered / total if total > 0 else 0.0,
         }

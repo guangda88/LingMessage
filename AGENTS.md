@@ -4,8 +4,8 @@
 
 lingmessage/
   __init__.py       - __version__ = 0.2.0
-  types.py          - Message, ThreadHeader, LingIdentity, Channel, MessageType, ThreadStatus, SourceType, IDENTITY_MAP, sender_display
-  mailbox.py        - Mailbox (file-system CRUD + index + audit + crash recovery)
+  types.py          - Message, ThreadHeader, LingIdentity, Channel, MessageType, ThreadStatus, SourceType, DeliveryStatus, IDENTITY_MAP, IdentityEntry, IdentityRegistry, sender_display, mark_delivered
+  mailbox.py        - Mailbox (file-system CRUD + index + audit + crash recovery + delivery tracking)
   seed.py           - 6 seed discussions (21 messages)
   adapters.py       - LingFlowAdapter, LingClaudeIntelAdapter, LingYiBriefingAdapter
   compat.py         - LingYi lingmessage.py bidirectional conversion
@@ -13,13 +13,14 @@ lingmessage/
   lingbus.py        - SQLite WAL message bus (experimental backend, with Mailbox sync)
   signing.py        - Message signing and verification (HMAC-SHA256)
   annotate.py       - Historical source annotation (source_type + source_trace backfill)
+  capability.py   - ServerCapability, CapabilityRegistry (dynamic runtime tool routing)
   cli.py            - CLI: list, read, send, reply, stats, seed, sync, import, discuss, continue, health, annotate, verify
 mcp_servers/
   signing_server.py  - FastMCP server wrapping signing module (sign, verify, annotate_verified)
   annotate_server.py - FastMCP server wrapping annotate module (detect_anomalies, annotate_messages, annotation_report)
   lingbus_server.py  - FastMCP server wrapping LingBus module (open_thread, post_reply, poll_messages, ack_message, get_stats)
 tests/
-  test_lingmessage.py   - 21 core tests
+  test_lingmessage.py   - 29 core tests (incl. delivery status)
   test_adapters.py      - 6 adapter tests
   test_compat.py        - 10 compat tests
   test_discuss.py       - 23 discuss engine tests
@@ -28,9 +29,12 @@ tests/
   test_annotate.py      - 18 annotation tests
   test_mcp_servers.py   - 9 MCP server tests
   test_signing.py       - 21 signing tests
+  test_capability.py    - 24 capability registry tests (ServerCapability, CapabilityRegistry, activity tracking)
+  test_identity_registry.py - 23 identity registry tests (IdentityEntry, IdentityRegistry, alignment)
 docs/
   api_reference.md      - Full API documentation
   IDENTITY_HALLUCINATION_CASE_CRUSH_20260407.md - Identity hallucination case study
+  LINGFLOW_PLUS_ARCHITECTURE_REFLECTION.md - LingFlow+ architecture analysis (Phase 0 proposal)
 
 ## Commands
 
@@ -61,6 +65,8 @@ docs/
   mailbox.load_thread_messages_iter(thread_id)  # Generator for memory efficiency
   mailbox.get_summary()
   mailbox.get_audit_log(limit=100)  # Query audit entries
+  mailbox.ack_message(thread_id, message_id)  # Mark message as delivered
+  mailbox.get_delivery_stats()  # Delivery rate statistics
 
 ### Adapters
 
@@ -92,6 +98,18 @@ docs/
   result = annotate_all(threads_dir, dry_run=True)  # preview
   result = annotate_all(threads_dir, dry_run=False) # apply
   # Or via CLI: python3 -m lingmessage.cli annotate [--force]
+
+### Capability Registry (Dynamic tool routing)
+
+  from lingmessage.capability import CapabilityRegistry, ServerCapability
+  reg = CapabilityRegistry.default()  # loads from ~/.lingmessage/capability_registry.json
+  reg.register(ServerCapability(server_key="lingtong", agent_id="lingflow", display_name="灵通", tools=("list_skills",)))
+  reg.heartbeat("lingtong")  # refresh activity timestamp
+  providers = reg.find_tool("knowledge_search")  # list all servers providing tool
+  best = reg.find_tool_best("run_skill")  # most recently active server
+  table = reg.get_routing_table()  # {"tool_name": "server_key", ...}
+  reg.merge_from_mcp_registry(mcp_servers_dict)  # import from LingFlow+ static config
+  reg.stats()  # {"total_servers": N, "active_servers": N, "total_tools": N}
 
 ### Security & Reliability
 
@@ -175,8 +193,8 @@ docs/
 
 ## Test Coverage
 
-169 tests in 10 files:
-  TestTypes (8), TestMailbox (8), TestSeed (5)
+224 tests in 12 files:
+  TestTypes (8), TestMailbox (8), TestSeed (5), TestDeliveryStatus (8)
   TestLingFlowAdapter (2), TestLingClaudeIntelAdapter (2), TestLingYiBriefingAdapter (2)
   TestIdentityMapping (3), TestImportLingYiDiscussion (3), TestImportLingYiStore (2), TestExportToLingYiFormat (2)
   TestMemberPersona (3), TestSystemPrompt (2), TestDiscussionContext (4), TestSelectRoundMembers (4)
@@ -191,8 +209,10 @@ docs/
   TestBuildSourceTrace (2), TestAnnotationResult (1), TestPrintReport (1)
   TestGetMessageContentHash (5), TestSignVerifyRoundtrip (6), TestAnnotateAsVerified (4), TestPersistenceAndRecovery (2), TestSecurityProperties (4)
   TestMcpSigning (3), TestMcpAnnotate (3), TestMcpLingBus (3)
+  TestServerCapability (4), TestCapabilityRegistry (15), TestIsActive (5)
+  TestIdentityEntry (5), TestIdentityRegistry (14), TestIdentityRegistryAlignment (3)
 
-**Coverage: 90%** (signing.py 100%, adapters.py 94%, mailbox.py 95%, lingbus.py 100%)
+**Coverage: 90%** (signing.py 100%, capability.py 95%, adapters.py 94%, mailbox.py 95%, lingbus.py 100%)
 
 ## Current Task: 身份验证 & 消息来源标注
 
