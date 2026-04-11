@@ -71,6 +71,16 @@ class _FileLock:
         import fcntl
         import time
 
+        # VULN-05: Stale lock detection — remove locks older than 60s
+        if self._lock_file.exists():
+            try:
+                lock_age = time.time() - self._lock_file.stat().st_mtime
+                if lock_age > 60:
+                    logger.warning(f"Removing stale lock file (age={lock_age:.0f}s): {self._lock_file}")
+                    self._lock_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+
         start_time = time.time()
         while True:
             try:
@@ -605,20 +615,20 @@ class Mailbox:
             return {"threads": [], "last_updated": _now_iso()}
 
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = self._read_json_safe(path)
             if isinstance(data, dict):
                 return data
             logger.warning("Index file is not a valid dict, will try backup")
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError, ValueError) as e:
             logger.error(f"Failed to load index: {e}, will try backup")
 
         # Try to restore from backup
         if self._restore_from_backup():
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
+                data = self._read_json_safe(path)
                 if isinstance(data, dict):
                     return data
-            except (json.JSONDecodeError, OSError) as e:
+            except (json.JSONDecodeError, OSError, ValueError) as e:
                 logger.error(f"Backup also corrupted: {e}")
 
         # If all else fails, return empty index

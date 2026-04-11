@@ -219,6 +219,16 @@ def _build_discussion_context(
 _DASHSCOPE_MODELS = ["qwen-plus", "qwen-turbo", "qwen-max"]
 
 
+_MAX_LLM_OUTPUT_LEN = 10000
+
+
+def _sanitize_llm_output(text: str) -> str:
+    """VULN-24: Strip dangerous content from LLM output before storage."""
+    text = text.replace("\x00", "")
+    text = text[:_MAX_LLM_OUTPUT_LEN]
+    return text
+
+
 def _call_llm(messages: list[dict[str, str]], model: str = "qwen-plus") -> str | None:
     api_key = _get_api_key()
     if not api_key:
@@ -258,6 +268,7 @@ def _call_llm(messages: list[dict[str, str]], model: str = "qwen-plus") -> str |
             if not choices:
                 continue
             content = choices[0]["message"].get("content", "").strip()
+            content = _sanitize_llm_output(content)
             if try_model != model:
                 logger.info(f"DashScope fallback: {model} → {try_model}")
             return content or None

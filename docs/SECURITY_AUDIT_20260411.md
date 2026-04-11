@@ -15,9 +15,9 @@
 | 总发现 | 34 |
 | Critical | 5 (全部已修复) |
 | High | 8 (全部已修复) |
-| Medium | 12 (9 已修复, 3 遗留) |
+| Medium | 12 (11 已修复, 1 遗留) |
 | Low | 9 (2 已修复, 7 遗留) |
-| 总修复率 | 70.6% (24/34) |
+| 总修复率 | 79.4% (27/34) |
 | Critical/High 修复率 | 100% (13/13) |
 
 ---
@@ -61,6 +61,10 @@
 | VULN-18 | cli.py | 任意文件读取 | `cmd_import()` 路径校验 (cwd/home/tmp) |
 | VULN-21 | compat.py | 无导入校验 | 类型检查 + 长度限制 + 空值保护 |
 | VULN-11 | types.py | 静默无效数据 | 枚举 fallback 到安全默认值 |
+| VULN-05 | mailbox.py | 锁 DoS | `_FileLock.__enter__()` stale 锁检测：>60s 自动清理 |
+| VULN-24 | discuss.py | LLM 输出信任 | `_sanitize_llm_output()` 清理 null bytes + 长度限制 (10KB) |
+| VULN-27 | poller.py | 未认证通知 | `X-LingMessage-Signature` HMAC-SHA256 签名头 |
+| VULN-33 | mailbox.py | 无锁索引读 | `_load_index()` 改用 `_read_json_safe()` 大小限制读取 |
 
 ### Low (已修复)
 
@@ -77,17 +81,15 @@
 | ID | 文件 | 类别 | 说明 |
 |----|------|------|------|
 | VULN-04 | mailbox.py | TOCTOU 竞态 | 文件存在性检查与操作之间存在理论竞态窗口。当前通过原子写入 (os.replace) 和文件锁部分缓解。完全修复需要重构为数据库后端。 |
-| VULN-05 | mailbox.py | 锁 DoS | `_FileLock` 使用 fcntl.flock，恶意进程可持有锁导致超时。已设置 10s 超时。完全修复需要锁文件 stale 检测。 |
-| VULN-33 | mailbox.py | 无锁索引读 | `_load_index()` 读取不加锁，可能读到部分写入。实际风险低（原子 os.replace 保证文件完整性）。 |
 
 ### Low (未修复)
 
 | ID | 文件 | 类别 | 说明 |
 |----|------|------|------|
 | VULN-15 | signing.py | 密钥为字符串 | 密钥以 str 传递，理论上可能被 swap。建议未来使用 bytes/keyctl。 |
-| VULN-24 | discuss.py | LLM 输出信任 | LLM 生成内容未做 HTML/注入清洗。当前风险低（输出仅存 JSON）。 |
+| VULN-24 | ~~discuss.py~~ | ~~LLM 输出信任~~ | **已修复** — `_sanitize_llm_output()` 清理 null bytes + 10KB 限制 |
 | VULN-26 | poller/notify | HTTP localhost | 通知使用明文 HTTP。建议未来升级为 Unix socket。 |
-| VULN-27 | poller.py | 未认证通知 | 通知端点无认证机制。建议添加 HMAC 签名头。 |
+| VULN-27 | ~~poller.py~~ | ~~未认证通知~~ | **已修复** — HMAC-SHA256 `X-LingMessage-Signature` 签名头 |
 | VULN-32 | (all) | 无消息完整性 | 非签名消息无完整性校验。signing 模块已就绪，但默认不启用。 |
 | VULN-19 | cli.py | 无速率限制 | CLI 操作无速率限制。单用户场景风险低。 |
 
@@ -103,7 +105,7 @@
 | `lingmessage/discuss.py` | 安全修复 | VULN-20, 22, 23 |
 | `lingmessage/signing.py` | 扩展签名 | VULN-14 |
 | `lingmessage/annotate.py` | 原子写入 | VULN-28 |
-| `lingmessage/poller.py` | SSRF 防护 | VULN-25 |
+| `lingmessage/poller.py` | SSRF + 认证 | VULN-25, 27 |
 | `lingmessage/types.py` | 安全解析 | VULN-09, 10, 11 |
 | `lingmessage/compat.py` | 输入校验 | VULN-21 |
 
@@ -137,7 +139,5 @@
 
 1. **数据库后端迁移** — 将文件系统存储迁移至 SQLite（已有 LingBus 实验），彻底解决 TOCTOU 和锁问题。
 2. **密钥管理升级** — 使用 `keyring` 库或 `keyctl` 替代文件存储密钥。
-3. **通知认证** — 为 poller 通知添加 HMAC 签名头。
-4. **Unix socket 通信** — 替代 HTTP localhost 通知。
-5. **速率限制** — 为 CLI 操作添加基础速率限制。
-6. **输出清洗** — discuss 引擎 LLM 输出做基本 HTML/注入清洗。
+3. **Unix socket 通信** — 替代 HTTP localhost 通知。
+4. **速率限制** — 为 CLI 操作添加基础速率限制。

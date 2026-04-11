@@ -12,8 +12,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac as hmac_mod
 import json
 import logging
+import os
 import signal
 import time
 from datetime import datetime, timezone
@@ -219,7 +222,16 @@ class DiscussionPoller:
         for attempt in range(NOTIFY_MAX_RETRIES):
             try:
                 data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-                request = Request(endpoint_url, data=data, headers={"Content-Type": "application/json"})
+                headers = {"Content-Type": "application/json"}
+                # VULN-27: Sign notification payload for authentication
+                notify_key = os.environ.get("LINGMESSAGE_NOTIFY_KEY", "lingmessage-notify-v1")
+                sig = hmac_mod.new(
+                    notify_key.encode("utf-8"),
+                    data,
+                    hashlib.sha256,
+                ).hexdigest()
+                headers["X-LingMessage-Signature"] = sig
+                request = Request(endpoint_url, data=data, headers=headers)
                 resp = urlopen(request, timeout=NOTIFY_TIMEOUT_SECONDS)
                 if 200 <= resp.status < 300:
                     logger.info(f"Notification delivered to {participant} (attempt {attempt + 1})")
