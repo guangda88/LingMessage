@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -157,13 +159,22 @@ def _write_annotated_message(
     source_type: SourceType,
     source_trace: str,
 ) -> None:
-    """Write annotated message back to disk."""
+    """Write annotated message back to disk using atomic write."""
     data["source_type"] = source_type.value
     data["source_trace"] = source_trace
-    msg_path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    content = json.dumps(data, ensure_ascii=False, indent=2)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=str(msg_path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, msg_path)
+        os.chmod(msg_path, 0o600)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def annotate_all(

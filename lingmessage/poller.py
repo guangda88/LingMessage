@@ -32,6 +32,18 @@ from lingmessage.types import (
 
 logger = logging.getLogger("lingmessage.poller")
 
+_LOCALHOST_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
+def _is_localhost_url(url: str) -> bool:
+    """Check if a URL points to localhost only."""
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+        return parsed.hostname in _LOCALHOST_HOSTS
+    except Exception:
+        return False
+
 STATE_FILE = Path.home() / ".lingmessage" / "poller_state.json"
 
 FIRST_REMIND_HOURS = 4
@@ -198,6 +210,10 @@ class DiscussionPoller:
         endpoint_url = entry.get("endpoint", "")
         if not endpoint_url:
             logger.debug(f"Empty endpoint for {participant}")
+            return False
+
+        if not _is_localhost_url(endpoint_url):
+            logger.warning(f"Blocked non-localhost notification URL for {participant}: {endpoint_url}")
             return False
 
         for attempt in range(NOTIFY_MAX_RETRIES):

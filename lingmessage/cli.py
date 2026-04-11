@@ -98,11 +98,13 @@ def cmd_send(args: argparse.Namespace) -> None:
     _validate_subject(args.subject)
     _validate_body(body)
 
-    source_type = SourceType.INFERRED
-    source_trace = ""
-    if getattr(args, 'sign', False):
-        source_type = SourceType.VERIFIED
-        source_trace = "signed_by:sender"
+    should_sign = getattr(args, 'sign', False)
+    signature = ""
+    if should_sign:
+        secret_key = mb._get_secret_key()
+        if not secret_key:
+            print("Error: --sign requires LINGMESSAGE_SECRET_KEY or ~/.lingmessage/.secret_key", file=sys.stderr)
+            sys.exit(1)
 
     header, msg = mb.open_thread(
         sender=sender,
@@ -111,11 +113,16 @@ def cmd_send(args: argparse.Namespace) -> None:
         topic=args.topic,
         subject=args.subject,
         body=body,
-        source_type=source_type,
-        source_trace=source_trace,
-        signature="",
+        source_type=SourceType.VERIFIED if should_sign else SourceType.INFERRED,
+        source_trace="" ,
+        signature=signature,
     )
-    signed_flag = " signed=true" if getattr(args, 'sign', False) else ""
+
+    if should_sign:
+        from lingmessage.signing import sign_message
+        signature = sign_message(msg, secret_key)
+
+    signed_flag = " signed=true" if should_sign else ""
     print(f"已发送 thread={header.thread_id} msg={msg.message_id}{signed_flag}")
 
 
@@ -131,11 +138,13 @@ def cmd_reply(args: argparse.Namespace) -> None:
     _validate_subject(args.subject)
     _validate_body(body)
 
-    source_type = SourceType.INFERRED
-    source_trace = ""
-    if getattr(args, 'sign', False):
-        source_type = SourceType.VERIFIED
-        source_trace = "signed_by:sender"
+    should_sign = getattr(args, 'sign', False)
+    secret_key = ""
+    if should_sign:
+        secret_key = mb._get_secret_key()
+        if not secret_key:
+            print("Error: --sign requires LINGMESSAGE_SECRET_KEY or ~/.lingmessage/.secret_key", file=sys.stderr)
+            sys.exit(1)
 
     msg = mb.reply(
         thread_id=args.thread_id,
@@ -143,11 +152,15 @@ def cmd_reply(args: argparse.Namespace) -> None:
         recipient=recipient,
         subject=args.subject,
         body=body,
-        source_type=source_type,
-        source_trace=source_trace,
+        source_type=SourceType.VERIFIED if should_sign else SourceType.INFERRED,
         signature="",
     )
-    signed_flag = " signed=true" if getattr(args, 'sign', False) else ""
+
+    if should_sign:
+        from lingmessage.signing import sign_message
+        sign_message(msg, secret_key)
+
+    signed_flag = " signed=true" if should_sign else ""
     print(f"已回复 msg={msg.message_id}{signed_flag}")
 
 
@@ -375,11 +388,18 @@ def cmd_sync(args: argparse.Namespace) -> None:
 
 def cmd_import(args: argparse.Namespace) -> None:
     mb = _mb(args)
-    path = Path(args.file)
+    path = Path(args.file).expanduser().resolve()
     if not path.exists():
         print(f"文件不存在: {path}", file=sys.stderr)
         sys.exit(1)
-    data = json.loads(path.read_text(encoding="utf-8"))
+    if not path.is_relative_to(Path.cwd()) and not str(path).startswith(str(Path.home())) and not str(path).startswith("/tmp"):
+        print("安全限制：仅允许导入当前目录、家目录或/tmp下的文件", file=sys.stderr)
+        sys.exit(1)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        print(f"文件格式错误: {e}", file=sys.stderr)
+        sys.exit(1)
     if isinstance(data, list):
         imported = 0
         for disc in data:

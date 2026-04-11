@@ -12,6 +12,7 @@ import logging
 import os
 import random
 from dataclasses import dataclass
+from pathlib import Path
 
 from lingmessage.mailbox import Mailbox
 from lingmessage.types import (
@@ -36,17 +37,23 @@ def _get_api_key() -> str:
     if key:
         return key
     try:
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path.home() / ".ling_lib"))
-        from ling_key_store import get_key
-        key = get_key("DASHSCOPE_API_KEY") or get_key("QWEN_DASHSCOPE_API_KEY") or ""
-    except (ImportError, ModuleNotFoundError, AttributeError):
-        # ling_key_store not available, will try fallback
+        import importlib.util
+        lib_path = Path.home() / ".ling_lib" / "ling_key_store.py"
+        if lib_path.exists():
+            spec = importlib.util.spec_from_file_location("ling_key_store", lib_path)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                key = mod.get_key("DASHSCOPE_API_KEY") or mod.get_key("QWEN_DASHSCOPE_API_KEY") or ""
+    except (ImportError, ModuleNotFoundError, AttributeError, OSError):
         pass
     if not key and os.path.exists(_KEY_FILE_PATH):
-        with open(_KEY_FILE_PATH, encoding="utf-8") as f:
-            key = f.read().strip()
+        key_file = Path(_KEY_FILE_PATH)
+        try:
+            os.chmod(key_file, 0o600)
+        except OSError:
+            pass
+        key = key_file.read_text(encoding="utf-8").strip()
     return key
 
 
@@ -181,7 +188,7 @@ def _build_discussion_context(
         sender = msg.get("sender_name", msg.get("sender", "?"))
         body = msg.get("body", msg.get("content", ""))
         msg_type = msg.get("message_type", "")
-        context_parts.append(f"【{sender}】({msg_type})\n{body}")
+        context_parts.append(f"[BEGIN_UNTRUSTED_MESSAGE sender={sender} type={msg_type}]\n{body}\n[END_UNTRUSTED_MESSAGE]")
 
     context_text = "\n\n---\n\n".join(context_parts)
 

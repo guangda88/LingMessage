@@ -68,13 +68,17 @@ def import_lingyi_discussion(
     mailbox: Mailbox,
     discussion: dict[str, Any],
 ) -> tuple[ThreadHeader, ...] | None:
+    if not isinstance(discussion, dict):
+        return None
     lingyi_messages = discussion.get("messages", [])
-    if not lingyi_messages:
+    if not isinstance(lingyi_messages, list) or not lingyi_messages:
         return None
 
     first = lingyi_messages[0]
+    if not isinstance(first, dict):
+        return None
     sender = _resolve_identity(first.get("from_id", "lingyi"))
-    topic = discussion.get("topic", first.get("topic", "Untitled"))
+    topic = str(discussion.get("topic", first.get("topic", "Untitled")))[:200]
     tags = discussion.get("tags") or first.get("tags")
     channel = _guess_channel(tags, topic)
 

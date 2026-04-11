@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
+import re
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -141,8 +145,75 @@ class Mailbox:
             logger.error(f"Failed to restore index from backup: {e}")
             return False
 
+    # --- Input Validation ---
+
+    _SAFE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+    _MAX_JSON_SIZE = 10 * 1024 * 1024  # 10MB
+
+    @staticmethod
+    def _is_safe_id(value: str) -> bool:
+        """Check whether an ID matches the expected 32-hex-char format."""
+        return bool(Mailbox._SAFE_ID_RE.fullmatch(value))
+
+    @staticmethod
+    def _validate_id(value: str, name: str) -> None:
+        """Validate that an ID matches the expected hex UUID format."""
+        if not Mailbox._SAFE_ID_RE.fullmatch(value):
+            raise ValueError(f"Invalid {name}: must be 32 hex characters, got {value!r}")
+
+    def _safe_thread_path(self, thread_id: str) -> Path:
+        """Resolve and validate a thread directory path.
+
+        Raises ValueError for malformed or path-traversal IDs.
+        """
+        self._validate_id(thread_id, "thread_id")
+        resolved = (self._threads_dir() / thread_id).resolve()
+        if not str(resolved).startswith(str(self._threads_dir().resolve())):
+            raise ValueError(f"thread_id path traversal detected: {thread_id}")
+        return resolved
+
+    def _safe_msg_path(self, thread_id: str, message_id: str) -> Path:
+        """Resolve and validate a message file path."""
+        self._validate_id(message_id, "message_id")
+        d = self._safe_thread_path(thread_id)
+        resolved = (d / f"msg_{message_id}.json").resolve()
+        if not str(resolved).startswith(str(self._threads_dir().resolve())):
+            raise ValueError(f"message_id path traversal detected: {message_id}")
+        return resolved
+
+    def _thread_path_unchecked(self, thread_id: str) -> Path:
+        """Return thread dir path *without* validation – for read-only lookups."""
+        return self._threads_dir() / thread_id
+
+    @staticmethod
+    def _read_json_safe(path: Path) -> Any:
+        """Read and parse JSON with size limit."""
+        size = path.stat().st_size
+        if size > Mailbox._MAX_JSON_SIZE:
+            raise ValueError(f"File too large ({size} bytes): {path}")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def _ensure_permissions(self) -> None:
+        """Set restrictive permissions on mailbox root and key files."""
+        try:
+            self.root.mkdir(parents=True, exist_ok=True)
+            os.chmod(self.root, 0o700)
+            secret_key = self.root / ".secret_key"
+            if secret_key.exists():
+                os.chmod(secret_key, 0o600)
+            audit_log = self.root / "audit.log"
+            if audit_log.exists():
+                os.chmod(audit_log, 0o600)
+            index = self._index_path()
+            if index.exists():
+                os.chmod(index, 0o600)
+        except OSError:
+            pass
+
+    # --- End Input Validation ---
+
     def _thread_dir(self, thread_id: str) -> Path:
-        d = self._threads_dir() / thread_id
+        d = self._safe_thread_path(thread_id)
         d.mkdir(parents=True, exist_ok=True)
         return d
 
@@ -174,14 +245,34 @@ class Mailbox:
     def _log_audit(self, entry: AuditLogEntry) -> None:
         """Append an audit log entry to the audit log file.
 
+        Each entry includes an HMAC hash chain for tamper detection.
+        The hash of each line incorporates the hash of the previous line,
+        making any deletion or modification detectable.
+
         Args:
             entry: The audit log entry to append
         """
         audit_path = self._audit_path()
         try:
-            # Append entry to audit log
+            prev_hash = ""
+            if audit_path.exists():
+                lines = audit_path.read_text(encoding="utf-8").strip().split("\n")
+                if lines and lines[-1].strip():
+                    try:
+                        prev_data = json.loads(lines[-1])
+                        prev_hash = prev_data.get("_chain_hash", "")
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+            entry_dict = entry.to_dict()
+            chain_input = prev_hash + json.dumps(entry_dict, sort_keys=True, separators=(",", ":"))
+            chain_hash = hmac.new(
+                b"lingmessage-audit-chain-v1",
+                chain_input.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            entry_dict["_chain_hash"] = chain_hash
             with audit_path.open("a", encoding="utf-8") as f:
-                f.write(entry.to_json() + "\n")
+                f.write(json.dumps(entry_dict, ensure_ascii=False) + "\n")
             logger.debug(f"Audit log: {entry.operation} by {entry.sender} on {entry.message_id}")
         except OSError as e:
             logger.error(f"Failed to write audit log: {e}")
@@ -223,10 +314,12 @@ class Mailbox:
         """Post a message to the mailbox.
 
         If message.source_type is VERIFIED, signature verification is performed.
+        When a VERIFIED message arrives without a pre-computed signature but
+        a secret key is configured, the signature is computed on the fly.
 
         Args:
             message: The message to post
-            signature: Optional signature for verification
+            signature: Optional pre-computed signature for verification
 
         Returns:
             The posted message
@@ -234,19 +327,21 @@ class Mailbox:
         Raises:
             ValueError: If signature verification fails
         """
-        # Verify signature if message is marked as VERIFIED
         if message.source_type == SourceType.VERIFIED:
             secret_key = self._get_secret_key()
             if not secret_key:
-                logger.warning("Message marked as VERIFIED but no secret key configured, skipping verification")
-            elif signature:
-                from lingmessage.signing import verify_signature
-                if not verify_signature(message, signature, secret_key):
-                    logger.error(f"Signature verification failed for message {message.message_id}")
+                raise ValueError(
+                    f"Message {message.message_id} marked as VERIFIED "
+                    f"but no secret key configured (set LINGMESSAGE_SECRET_KEY "
+                    f"or create ~/.lingmessage/.secret_key)"
+                )
+            from lingmessage.signing import sign_message
+            computed = sign_message(message, secret_key)
+            if signature:
+                if not hmac.compare_digest(computed, signature):
                     raise ValueError(f"Invalid signature for message {message.message_id}")
-                logger.info(f"Message {message.message_id} signature verified successfully")
-            else:
-                raise ValueError(f"Message {message.message_id} marked as VERIFIED but no signature provided")
+            signature = computed
+            logger.info(f"Message {message.message_id} signature verified successfully")
 
         # Log message posting
         logger.info(f"Posting message {message.message_id} in thread {message.thread_id} from {message.sender.value}")
@@ -254,7 +349,18 @@ class Mailbox:
         # Write message file
         d = self._thread_dir(message.thread_id)
         msg_path = d / f"msg_{message.message_id}.json"
-        msg_path.write_text(message.to_json(indent=2), encoding="utf-8")
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=d, suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                f.write(message.to_json(indent=2))
+            os.replace(tmp_path, msg_path)
+            os.chmod(msg_path, 0o600)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
         # Update index
         self._update_index(message)
@@ -269,6 +375,21 @@ class Mailbox:
             details=f"source_type={message.source_type.value}, signed={bool(signature) if message.source_type == SourceType.VERIFIED else False}",
         )
         self._log_audit(audit_entry)
+
+        # Ding recipient
+        if message.recipient and message.recipient.value != message.sender.value:
+            try:
+                from lingmessage.notify import ding_recipient
+
+                ding_recipient(message.recipient.value, {
+                    "type": "new_message",
+                    "thread_id": message.thread_id,
+                    "message_id": message.message_id,
+                    "sender": message.sender.value,
+                    "subject": message.subject,
+                })
+            except Exception:
+                pass
 
         return message
 
@@ -325,7 +446,18 @@ class Mailbox:
         )
         d = self._thread_dir(tid)
         header_path = d / "thread.json"
-        header_path.write_text(header.to_json(indent=2), encoding="utf-8")
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=d, suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                f.write(header.to_json(indent=2))
+            os.replace(tmp_path, header_path)
+            os.chmod(header_path, 0o600)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
         self.post(first, signature)
         self._update_index(first, header)
 
@@ -396,24 +528,24 @@ class Mailbox:
         return msg
 
     def load_thread_header(self, thread_id: str) -> ThreadHeader | None:
-        path = self._threads_dir() / thread_id / "thread.json"
+        path = self._thread_path_unchecked(thread_id) / "thread.json"
         if not path.exists():
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = self._read_json_safe(path)
         return ThreadHeader.from_dict(data)
 
     def load_thread_messages(self, thread_id: str) -> tuple[Message, ...]:
-        d = self._threads_dir() / thread_id
+        d = self._thread_path_unchecked(thread_id)
         if not d.exists():
             return ()
         messages: list[Message] = []
         for p in d.glob("msg_*.json"):
-            data = json.loads(p.read_text(encoding="utf-8"))
+            data = self._read_json_safe(p)
             messages.append(Message.from_dict(data))
         messages.sort(key=lambda m: m.timestamp)
         return tuple(messages)
 
-    def load_thread_messages_iter(self, thread_id: str) -> Iterator[Message]:
+    def load_thread_messages_iter(self, thread_id: str):
         """Load thread messages lazily using a generator.
 
         Reads each file once, holding at most one parsed Message object
@@ -426,9 +558,7 @@ class Mailbox:
         Yields:
             Message objects in chronological order
         """
-        from collections.abc import Iterator
-
-        d = self._threads_dir() / thread_id
+        d = self._thread_path_unchecked(thread_id)
         if not d.exists():
             return
         paths = list(d.glob("msg_*.json"))
@@ -437,10 +567,10 @@ class Mailbox:
         index: list[tuple[str, dict[str, Any]]] = []
         for p in paths:
             try:
-                data = json.loads(p.read_text(encoding="utf-8"))
+                data = self._read_json_safe(p)
                 ts = data.get("timestamp", "")
                 index.append((ts, data))
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError, ValueError):
                 continue
         index.sort(key=lambda pair: pair[0])
         for _, data in index:
@@ -523,11 +653,22 @@ class Mailbox:
             index["threads"] = threads
             index["last_updated"] = _now_iso()
             self.root.mkdir(parents=True, exist_ok=True)
+            self._ensure_permissions()
             self._create_index_backup()
-            index_path.write_text(
-                json.dumps(index, ensure_ascii=False, indent=2),
-                encoding="utf-8",
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.root), suffix=".tmp"
             )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    json.dump(index, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, index_path)
+                os.chmod(index_path, 0o600)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
     def _increment_thread(self, header: ThreadHeader) -> None:
         index_path = self._index_path()
@@ -542,11 +683,22 @@ class Mailbox:
                     break
             index["last_updated"] = _now_iso()
             self.root.mkdir(parents=True, exist_ok=True)
+            self._ensure_permissions()
             self._create_index_backup()
-            index_path.write_text(
-                json.dumps(index, ensure_ascii=False, indent=2),
-                encoding="utf-8",
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.root), suffix=".tmp"
             )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    json.dump(index, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, index_path)
+                os.chmod(index_path, 0o600)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
     def get_summary(self) -> dict[str, Any]:
         index = self._load_index()
@@ -578,15 +730,30 @@ class Mailbox:
         Returns:
             The updated message, or None if not found
         """
-        msg_path = self._threads_dir() / thread_id / f"msg_{message_id}.json"
+        if not self._is_safe_id(thread_id) or not self._is_safe_id(message_id):
+            return None
+        msg_path = self._safe_msg_path(thread_id, message_id)
         if not msg_path.exists():
             return None
 
         with _FileLock(msg_path):
-            data = json.loads(msg_path.read_text(encoding="utf-8"))
+            data = self._read_json_safe(msg_path)
             msg = Message.from_dict(data)
             updated = mark_delivered(msg)
-            msg_path.write_text(updated.to_json(indent=2), encoding="utf-8")
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                dir=str(msg_path.parent), suffix=".tmp"
+            )
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    f.write(updated.to_json(indent=2))
+                os.replace(tmp_path, msg_path)
+                os.chmod(msg_path, 0o600)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
         self._log_audit(AuditLogEntry(
             timestamp=_now_iso(),

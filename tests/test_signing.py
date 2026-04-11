@@ -36,8 +36,8 @@ class TestGetMessageContentHash:
         hash2 = _get_message_content_hash(msg)
         assert hash1 == hash2
 
-    def test_hash_ignores_metadata(self) -> None:
-        """哈希应忽略 metadata"""
+    def test_hash_includes_metadata(self) -> None:
+        """哈希应包含 metadata（VULN-14 修复后）"""
         msg1 = create_message(
             sender=LingIdentity.LINGFLOW,
             recipient=LingIdentity.ALL,
@@ -52,7 +52,7 @@ class TestGetMessageContentHash:
         msg2 = replace(msg1, metadata=tuple([("key2", "value2")]))
         hash1 = _get_message_content_hash(msg1)
         hash2 = _get_message_content_hash(msg2)
-        assert hash1 == hash2
+        assert hash1 != hash2
 
     def test_hash_ignores_source_trace(self) -> None:
         """哈希应忽略 source_trace"""
@@ -185,8 +185,8 @@ class TestSignVerifyRoundtrip:
         is_valid = verify_signature(tampered_msg, signature, secret_key)
         assert is_valid is False
 
-    def test_sign_verify_metadata_tamper_ignored(self) -> None:
-        """篡改 metadata 不应影响验证（因为 metadata 不参与签名）"""
+    def test_sign_verify_metadata_tamper_detected(self) -> None:
+        """篡改 metadata 应导致验证失败（VULN-14 修复后，metadata 参与签名）"""
         msg = create_message(
             sender=LingIdentity.LINGFLOW,
             recipient=LingIdentity.ALL,
@@ -199,12 +199,11 @@ class TestSignVerifyRoundtrip:
         secret_key = "test_secret_key"
         signature = sign_message(msg, secret_key)
 
-        # 篡改 metadata（不影响验证）
         from dataclasses import replace
 
         tampered_msg = replace(msg, metadata=tuple([("new_key", "new_value")]))
         is_valid = verify_signature(tampered_msg, signature, secret_key)
-        assert is_valid is True
+        assert is_valid is False
 
     def test_sign_deterministic(self) -> None:
         """同一消息多次签名应产生相同结果"""

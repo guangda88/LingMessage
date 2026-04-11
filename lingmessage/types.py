@@ -179,21 +179,55 @@ class Message:
         if channel is None:
             channel = "knowledge"  # Default channel for old messages
 
+        # Safe enum construction with fallback (VULN-09)
+        try:
+            sender_enum = LingIdentity(data["sender"])
+        except ValueError:
+            sender_enum = LingIdentity.ALL
+        try:
+            recipient_enum = LingIdentity(recipient)
+        except ValueError:
+            recipient_enum = LingIdentity.ALL
+        try:
+            mt_enum = MessageType(message_type)
+        except ValueError:
+            mt_enum = MessageType.OPEN
+        try:
+            ch_enum = Channel(channel)
+        except ValueError:
+            ch_enum = Channel.ECOSYSTEM
+        try:
+            st_enum = SourceType(data.get("source_type", "inferred"))
+        except ValueError:
+            st_enum = SourceType.INFERRED
+        try:
+            ds_enum = DeliveryStatus(data.get("delivery_status", "sent"))
+        except ValueError:
+            ds_enum = DeliveryStatus.SENT
+
+        # Sanitize metadata to prevent injection (VULN-10)
+        raw_meta = data.get("metadata", {})
+        safe_meta = {}
+        if isinstance(raw_meta, dict):
+            for k, v in raw_meta.items():
+                if isinstance(k, str) and isinstance(v, str) and len(k) <= 100 and len(v) <= 1000:
+                    safe_meta[k] = v
+
         return cls(
             message_id=data["message_id"],
             thread_id=data["thread_id"],
-            sender=LingIdentity(data["sender"]),
-            recipient=LingIdentity(recipient),
-            message_type=MessageType(message_type),
-            channel=Channel(channel),
+            sender=sender_enum,
+            recipient=recipient_enum,
+            message_type=mt_enum,
+            channel=ch_enum,
             subject=data["subject"],
             body=data["body"],
             timestamp=_normalize_timestamp(data["timestamp"]),
             reply_to=data.get("reply_to", ""),
-            metadata=tuple(sorted(data.get("metadata", {}).items())),
-            source_type=SourceType(data.get("source_type", "inferred")),
+            metadata=tuple(sorted(safe_meta.items())),
+            source_type=st_enum,
             source_trace=data.get("source_trace", ""),
-            delivery_status=DeliveryStatus(data.get("delivery_status", "sent")),
+            delivery_status=ds_enum,
             delivered_at=data.get("delivered_at", ""),
         )
 
