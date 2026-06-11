@@ -58,8 +58,37 @@ def run_sdt_005(bus: LingBus) -> tuple[str, str, float]:
     return "success", f"{gov_count} active proposals", time.time() - t0
 
 
+def run_sdt_002(bus: LingBus) -> tuple[str, str, float]:
+    t0 = time.time()
+    from lingmessage.mailbox import Mailbox
+    from lingmessage.signing import sign_message, verify_signature
+    from lingmessage.types import Message, LingIdentity, MessageType, Channel
+
+    mb = Mailbox()
+    key = mb._get_secret_key()
+
+    if not key:
+        return "warning", "secret_key not configured, signing disabled", time.time() - t0
+
+    test_msg = Message(
+        message_id="sdt-audit-probe", thread_id="sdt-audit",
+        sender=LingIdentity.LINGMESSAGE, recipient=LingIdentity.LINGFLOW,
+        message_type=MessageType.REPLY, channel=Channel.ECOSYSTEM,
+        subject="audit", body="SDT-lm-002 integrity probe",
+        timestamp="2026-06-11T00:00:00Z",
+    )
+    sig = sign_message(test_msg, key)
+    ok = verify_signature(test_msg, sig, key)
+
+    if not ok:
+        return "failed", "sign/verify cycle broken", time.time() - t0
+
+    return "success", "sign/verify ok", time.time() - t0
+
+
 SDT_TASKS = {
     "SDT-lm-001": ("LingBus健康巡检", run_sdt_001),
+    "SDT-lm-002": ("签名完整性抽检", run_sdt_002),
     "SDT-lm-003": ("邻居端口巡检", run_sdt_003),
     "SDT-lm-004": ("配置漂移检测", run_sdt_004),
     "SDT-lm-005": ("治理提案巡检", run_sdt_005),
