@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lingmessage"
-version = "0.3.0"
+version = "0.5.0"
 description = "灵信 (lingmessage) — 灵字辈跨项目讨论协议与框架"
 readme = "README.md"
 requires-python = ">=3.10"
