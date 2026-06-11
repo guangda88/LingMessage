@@ -14,6 +14,15 @@ from lingmessage.annotate import (
 
 mcp = FastMCP("lingmessage-annotate")
 
+_ALLOWED_THREADS_PREFIX = Path.home() / ".lingmessage"
+
+
+def _validate_threads_dir(threads_dir: str) -> Path:
+    resolved = Path(threads_dir).expanduser().resolve()
+    if not str(resolved).startswith(str(_ALLOWED_THREADS_PREFIX.resolve())):
+        raise ValueError(f"threads_dir must be under {_ALLOWED_THREADS_PREFIX}")
+    return resolved
+
 
 @mcp.tool()
 def detect_anomalies(threads_dir: str) -> dict:
@@ -25,7 +34,7 @@ def detect_anomalies(threads_dir: str) -> dict:
     Returns:
         {"same_second_anomalies": int, "rapid_succession_batches": int}
     """
-    path = Path(threads_dir).expanduser()
+    path = _validate_threads_dir(threads_dir)
     messages = [msg for _, msg in _load_raw_messages(path)]
     ss = detect_same_second_anomalies(messages)
     rs = detect_rapid_succession_batches(messages)
@@ -46,7 +55,7 @@ def annotate_messages(threads_dir: str, dry_run: bool = True) -> dict:
     Returns:
         标注结果统计
     """
-    path = Path(threads_dir).expanduser()
+    path = _validate_threads_dir(threads_dir)
     result = annotate_all(path, dry_run=dry_run)
     return result.to_dict() | {"dry_run": dry_run}
 
@@ -64,7 +73,7 @@ def annotation_report(threads_dir: str) -> str:
     import io
     import sys
 
-    path = Path(threads_dir).expanduser()
+    path = _validate_threads_dir(threads_dir)
     result = annotate_all(path, dry_run=True)
 
     old_stdout = sys.stdout
@@ -75,4 +84,9 @@ def annotation_report(threads_dir: str) -> str:
 
 
 if __name__ == "__main__":
+    try:
+        from lingmessage.registry import register_fastmcp_server
+        register_fastmcp_server("lingmessage-annotate", "灵信·标注", mcp, "线程标注")
+    except Exception:
+        pass
     mcp.run()

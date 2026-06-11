@@ -1,0 +1,15 @@
+# 灵信 (lingmessage) 安全优先行为配置
+# 依据: PRO-2026-04-15-009 灵族主理权重重调方案
+# 原则: 安全 > 准确 > 高效
+
+discussion:
+  safety_rules_in_prompt: true
+  require_uncertainty_declaration: true
+  block_fabricated_consensus: true
+  log_all_proposal_changes: true
+
+persona:
+  safety_first: true
+  accuracy_over_speed: true
+  never_guess: true
+  expose_errors_immediately: true

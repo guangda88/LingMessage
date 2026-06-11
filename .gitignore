@@ -4,6 +4,14 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-lingmessage/
-~/
-.coverage
+~/.coverage
+.audit/
+*.bak.*
+null/
+*.db
+homepage/
+typescript
+career_education_history.txt
+.ling-term-mcp/
+.lingmessage/
+scripts/__pycache__/

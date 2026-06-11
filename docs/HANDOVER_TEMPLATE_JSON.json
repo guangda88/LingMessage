@@ -1,0 +1,42 @@
+{
+  "version": "2.0",
+  "member": "<成员英文名>",
+  "session": 0,
+  "updated_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "status": "active",
+
+  "user_tasks": [
+    {
+      "id": 1,
+      "task": "任务描述",
+      "status": "pending",
+      "blockers": [],
+      "next_steps": []
+    }
+  ],
+
+  "sdt_status": {
+    "SDT-XX-001": {
+      "name": "任务名称",
+      "priority": "P1",
+      "interval": "6h",
+      "last_run": null,
+      "last_result": null,
+      "consecutive_runs": 0
+    }
+  },
+
+  "production_log": [
+    {
+      "date": "YYYY-MM-DD",
+      "item": "产出描述",
+      "files": []
+    }
+  ],
+
+  "blockers": [],
+
+  "next_session": [],
+
+  "infrastructure": {}
+}

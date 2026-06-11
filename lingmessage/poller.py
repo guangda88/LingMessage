@@ -12,8 +12,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac as hmac_mod
 import json
 import logging
+import os
 import signal
 import time
 from datetime import datetime, timezone
@@ -21,6 +24,8 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 from urllib.error import URLError
+
+import re
 
 from lingmessage.mailbox import Mailbox
 from lingmessage.types import (
@@ -31,6 +36,20 @@ from lingmessage.types import (
 )
 
 logger = logging.getLogger("lingmessage.poller")
+
+_HEX_ID_RE = re.compile(r'^[0-9a-f]{32}$')
+
+_LOCALHOST_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
+def _is_localhost_url(url: str) -> bool:
+    """Check if a URL points to localhost only."""
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+        return parsed.hostname in _LOCALHOST_HOSTS
+    except Exception:
+        return False
 
 STATE_FILE = Path.home() / ".lingmessage" / "poller_state.json"
 
@@ -118,6 +137,8 @@ class DiscussionPoller:
         self._stats["scanned"] += len(threads)
 
         for header in threads:
+            if not _HEX_ID_RE.match(header.thread_id):
+                continue
             thread_actions = self._check_thread(header.thread_id, header)
             actions.extend(thread_actions)
 
@@ -200,10 +221,23 @@ class DiscussionPoller:
             logger.debug(f"Empty endpoint for {participant}")
             return False
 
+        if not _is_localhost_url(endpoint_url):
+            logger.warning(f"Blocked non-localhost notification URL for {participant}: {endpoint_url}")
+            return False
+
         for attempt in range(NOTIFY_MAX_RETRIES):
             try:
                 data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-                request = Request(endpoint_url, data=data, headers={"Content-Type": "application/json"})
+                headers = {"Content-Type": "application/json"}
+                # VULN-27: Sign notification payload for authentication
+                notify_key = os.environ.get("LINGMESSAGE_NOTIFY_KEY", "lingmessage-notify-v1")
+                sig = hmac_mod.new(
+                    notify_key.encode("utf-8"),
+                    data,
+                    hashlib.sha256,
+                ).hexdigest()
+                headers["X-lingmessage-Signature"] = sig
+                request = Request(endpoint_url, data=data, headers=headers)
                 resp = urlopen(request, timeout=NOTIFY_TIMEOUT_SECONDS)
                 if 200 <= resp.status < 300:
                     logger.info(f"Notification delivered to {participant} (attempt {attempt + 1})")

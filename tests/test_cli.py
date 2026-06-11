@@ -237,7 +237,8 @@ class TestCmdSendSigned:
             subject="signed subj", body="signed body",
             sign=True,
         )
-        cmd_send(args)
+        with patch.object(Mailbox, "_get_secret_key", return_value="test-key"):
+            cmd_send(args)
         out = capsys.readouterr().out
         assert "已发送" in out
         assert "signed=true" in out
@@ -273,7 +274,8 @@ class TestCmdReplySigned:
             recipient="lingflow", subject="re: hello", body="signed reply",
             sign=True,
         )
-        cmd_reply(args)
+        with patch.object(Mailbox, "_get_secret_key", return_value="test-key"):
+            cmd_reply(args)
         out = capsys.readouterr().out
         assert "已回复" in out
         assert "signed=true" in out
@@ -331,13 +333,13 @@ class TestCmdVerify:
             topic="verify verbose",
             subject="hello",
             body="world",
-            source_type=SourceType.VERIFIED,
+            source_type=SourceType.INFERRED,
         )
         args = _ns(command="verify", mailbox=str(mb_path), thread_id=None, verbose=True)
         with patch.object(Mailbox, "_get_secret_key", return_value="test-key"):
             cmd_verify(args)
         out = capsys.readouterr().out
-        assert "VERIFIED" in out
+        assert "INFERRED" in out
         assert "密钥来源" in out
 
     def test_verify_specific_thread(self, mb_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lingmessage.adapters import LingFlowAdapter, LingClaudeIntelAdapter, LingYiBriefingAdapter
+from lingmessage.adapters import lingflowAdapter, lingclaudeIntelAdapter, lingyiBriefingAdapter
 from lingmessage.mailbox import Mailbox
 
 
@@ -12,7 +12,7 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
-class TestLingFlowAdapter:
+class TestlingflowAdapter:
     def test_post_daily_reports(self, tmp_path: Path) -> None:
         mailbox = Mailbox(root=tmp_path / "mailbox")
         reports_dir = tmp_path / ".lingflow" / "intelligence" / "reports" / "daily"
@@ -23,7 +23,7 @@ class TestLingFlowAdapter:
             "concerns": [],
             "metrics": {"total_mentions": 10, "star_count": 100},
         })
-        adapter = LingFlowAdapter(mailbox, lingflow_root=tmp_path)
+        adapter = lingflowAdapter(mailbox, lingflow_root=tmp_path)
         posted = adapter.post_daily_reports()
         assert len(posted) == 1
         msg_files = list((tmp_path / "mailbox" / "threads").rglob("msg_*.json"))
@@ -31,11 +31,11 @@ class TestLingFlowAdapter:
 
     def test_no_reports_dir(self, tmp_path: Path) -> None:
         mailbox = Mailbox(root=tmp_path / "mailbox")
-        adapter = LingFlowAdapter(mailbox, lingflow_root=tmp_path)
+        adapter = lingflowAdapter(mailbox, lingflow_root=tmp_path)
         assert adapter.post_daily_reports() == []
 
 
-class TestLingClaudeIntelAdapter:
+class TestlingclaudeIntelAdapter:
     def test_post_digests(self, tmp_path: Path) -> None:
         mailbox = Mailbox(root=tmp_path / "mailbox")
         intel_dir = tmp_path / ".lingclaude" / "intel"
@@ -46,17 +46,17 @@ class TestLingClaudeIntelAdapter:
             "recommendations": ["Continue refactoring"],
             "category_counts": {"quality": 3},
         })
-        adapter = LingClaudeIntelAdapter(mailbox, lingclaude_root=tmp_path)
+        adapter = lingclaudeIntelAdapter(mailbox, lingclaude_root=tmp_path)
         posted = adapter.post_digests()
         assert len(posted) == 1
 
     def test_no_intel_dir(self, tmp_path: Path) -> None:
         mailbox = Mailbox(root=tmp_path / "mailbox")
-        adapter = LingClaudeIntelAdapter(mailbox, lingclaude_root=tmp_path)
+        adapter = lingclaudeIntelAdapter(mailbox, lingclaude_root=tmp_path)
         assert adapter.post_digests() == []
 
 
-class TestLingYiBriefingAdapter:
+class TestlingyiBriefingAdapter:
     def test_post_briefings(self, tmp_path: Path) -> None:
         mailbox = Mailbox(root=tmp_path / "mailbox")
         intel_dir = tmp_path / ".lingyi" / "intelligence"
@@ -65,11 +65,11 @@ class TestLingYiBriefingAdapter:
             "lingflow": {"available": True},
             "lingclaude": {"available": True},
         })
-        adapter = LingYiBriefingAdapter(mailbox, lingyi_root=tmp_path)
+        adapter = lingyiBriefingAdapter(mailbox, lingyi_root=tmp_path)
         posted = adapter.post_briefings()
         assert len(posted) == 1
 
     def test_no_intel_dir(self, tmp_path: Path) -> None:
         mailbox = Mailbox(root=tmp_path / "mailbox")
-        adapter = LingYiBriefingAdapter(mailbox, lingyi_root=tmp_path)
+        adapter = lingyiBriefingAdapter(mailbox, lingyi_root=tmp_path)
         assert adapter.post_briefings() == []

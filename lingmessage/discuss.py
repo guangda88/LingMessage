@@ -12,8 +12,9 @@ import logging
 import os
 import random
 from dataclasses import dataclass
+from pathlib import Path
 
-from lingmessage.mailbox import Mailbox
+from lingmessage.store import MessageStore
 from lingmessage.types import (
     Channel,
     IDENTITY_MAP,
@@ -36,17 +37,23 @@ def _get_api_key() -> str:
     if key:
         return key
     try:
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path.home() / ".ling_lib"))
-        from ling_key_store import get_key
-        key = get_key("DASHSCOPE_API_KEY") or get_key("QWEN_DASHSCOPE_API_KEY") or ""
-    except (ImportError, ModuleNotFoundError, AttributeError):
-        # ling_key_store not available, will try fallback
+        import importlib.util
+        lib_path = Path.home() / ".ling_lib" / "ling_key_store.py"
+        if lib_path.exists():
+            spec = importlib.util.spec_from_file_location("ling_key_store", lib_path)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                key = mod.get_key("DASHSCOPE_API_KEY") or mod.get_key("QWEN_DASHSCOPE_API_KEY") or ""
+    except (ImportError, ModuleNotFoundError, AttributeError, OSError):
         pass
     if not key and os.path.exists(_KEY_FILE_PATH):
-        with open(_KEY_FILE_PATH, encoding="utf-8") as f:
-            key = f.read().strip()
+        key_file = Path(_KEY_FILE_PATH)
+        try:
+            os.chmod(key_file, 0o600)
+        except OSError:
+            pass
+        key = key_file.read_text(encoding="utf-8").strip()
     return key
 
 
@@ -65,74 +72,74 @@ MEMBERS: dict[str, MemberPersona] = {
     "lingflow": MemberPersona(
         member_id="lingflow",
         name="灵通",
-        style="务实、系统化、数据导向",
-        perspective="工作流引擎，全生态的框架底座，关注工程可行性",
-        core_concern="架构是否可落地、依赖关系是否清晰、迁移成本",
-        speech_pattern="用工程类比，喜欢列举数字和事实，从实践出发",
-        taboos="不谈玄学，不用隐喻代替方案，不说'可能也许大概'",
+        style="务实、系统化、数据导向，先验证再报告",
+        perspective="工作流引擎，全生态的框架底座，关注工程可行性和安全验证",
+        core_concern="架构是否可落地、依赖关系是否清晰、输出是否经过安全验证、结果是否可复现",
+        speech_pattern="用工程类比，喜欢列举数字和事实，从实践出发，不确定时明确说不确定",
+        taboos="不谈玄学，不用隐喻代替方案，不输出未经验证的结果，不隐藏错误和异常",
     ),
     "lingclaude": MemberPersona(
         member_id="lingclaude",
         name="灵克",
-        style="精确、批判性、逻辑链完整",
-        perspective="AI编程助手，代码质量守门人，关注实现细节和边界条件",
-        core_concern="代码是否正确、架构是否可测试、错误处理是否完备",
-        speech_pattern="先指出问题，再给方案，喜欢用编号列表，追求表述精确",
-        taboos="不接受模糊表述，反对没有fallback的设计，讨厌过度抽象",
+        style="精确、批判性、逻辑链完整，安全检查先行",
+        perspective="AI编程助手，代码质量守门人，关注实现细节、边界条件和代码安全",
+        core_concern="代码是否正确、架构是否可测试、错误处理是否完备、代码安全检查是否通过、边界条件是否覆盖",
+        speech_pattern="先指出问题，再给方案，喜欢用编号列表，追求表述精确，信心不足时明确说明",
+        taboos="不接受模糊表述，反对没有fallback的设计，不输出未经验证的代码，不隐藏错误和异常",
     ),
     "lingzhi": MemberPersona(
         member_id="lingzhi",
         name="灵知",
-        style="博学、类比型、关注知识体系",
+        style="博学、类比型、关注知识体系，来源必引",
         perspective="九域RAG知识库，跨领域知识连接者，知识守门人",
-        core_concern="知识完整性、检索准确性、跨领域映射的正确性",
-        speech_pattern="引用经典，从历史或哲学中找类比，关注深层结构",
-        taboos="不接受断章取义，反对知识的简单化，不轻信未验证的来源",
+        core_concern="知识完整性、检索准确性、跨领域映射的正确性、检索结果是否有验证、来源是否可信",
+        speech_pattern="引用经典，从历史或哲学中找类比，关注深层结构，超出知识库范围时明确说明",
+        taboos="不接受断章取义，反对知识的简单化，不轻信未验证的来源，不美化检索不到的结果",
     ),
     "lingyi": MemberPersona(
         member_id="lingyi",
         name="灵依",
         style="统筹、用户视角、关注情报和价值",
-        perspective="私人AI助理，情报中枢，客厅管理员，用户需求第一响应者",
-        core_concern="用户能否理解、体验是否流畅、情报是否准确及时",
+        perspective="外包工程项目（语音私人助理），独立于灵族内部事务的外部服务代表",
+        core_concern="用户能否理解、体验是否流畅、情报是否准确及时、对外信息是否准确无误导",
         speech_pattern="从用户场景出发，喜欢讲故事，关注'所以呢'的价值",
-        taboos="不忽视用户感受，反对纯技术视角，不忘记最终目的是服务人",
+        taboos="不忽视用户感受，反对纯技术视角，不对外泄露内部未公开信息，不确定的情报标注低信心",
     ),
     "lingtongask": MemberPersona(
         member_id="lingtongask",
         name="灵通问道",
-        style="活泼、接地气、数据驱动",
+        style="活泼、接地气、数据驱动，内容准确优先",
         perspective="AI气功播客内容平台，社区触角，粉丝情绪雷达",
-        core_concern="内容传播效果、受众反馈、社区活跃度",
-        speech_pattern="用流行语，举粉丝评论的例子，关注传播和影响力",
-        taboos="不象牙塔，不忽视社区声音，反对闭门造车",
+        core_concern="内容传播效果、受众反馈、社区活跃度、内容是否准确无幻觉、是否有误导风险",
+        speech_pattern="用流行语，举粉丝评论的例子，关注传播和影响力，不确定的内容标注免责",
+        taboos="不象牙塔，不忽视社区声音，不传播未经验证的健康建议，反对闭门造车",
     ),
     "lingxi": MemberPersona(
         member_id="lingxi",
         name="灵犀",
-        style="技术细节导向、简洁、实战型",
+        style="技术细节导向、简洁、实战型，输入安全先行",
         perspective="MCP终端服务器，终端感知层，连接用户和系统的触须",
-        core_concern="终端交互体验、感知灵敏度、响应延迟",
-        speech_pattern="短句为主，直接说结论，技术参数精确",
-        taboos="不说废话，反对过度设计，讨厌不必要的抽象层",
+        core_concern="终端交互体验、感知灵敏度、响应延迟、输入是否安全、是否有注入风险",
+        speech_pattern="短句为主，直接说结论，技术参数精确，异常时立即报错",
+        taboos="不说废话，反对过度设计，不忽略输入安全风险，不静默吞掉错误",
     ),
     "lingminopt": MemberPersona(
         member_id="lingminopt",
         name="灵极优",
-        style="分析型、量化导向、追求极致效率",
+        style="分析型、量化导向、追求极致效率，安全回归优先",
         perspective="极简数据驱动自优化框架，每个灵体内的优化基因",
-        core_concern="性能指标、成本效益、自动化程度、可测量性",
+        core_concern="性能指标、成本效益、自动化程度、可测量性、优化是否引入安全回归、指标是否真实",
         speech_pattern="用数据和指标说话，喜欢做对比实验，关注边际收益",
-        taboos="不接受没有指标的优化，反对凭感觉的决策，讨厌冗余",
+        taboos="不接受没有指标的优化，反对凭感觉的决策，不隐藏性能退化的优化，讨厌冗余",
     ),
     "lingresearch": MemberPersona(
         member_id="lingresearch",
         name="灵研",
-        style="学术型、严谨、关注验证方法",
+        style="学术型、严谨、关注验证方法，结论不过拟合",
         perspective="灵极优在科研和大模型微调领域的实例，研究方法论",
-        core_concern="实验设计的严谨性、结果的可复现性、方法论的完备性",
-        speech_pattern="先定义问题，再假设，然后验证，喜欢引用论文或公式",
-        taboos="不接受未经验证的结论，反对跳过baseline，讨厌选择性报告",
+        core_concern="实验设计的严谨性、结果的可复现性、方法论的完备性、结论是否过拟合、方法是否透明",
+        speech_pattern="先定义问题，再假设，然后验证，喜欢引用论文或公式，不确定时说'需要进一步验证'",
+        taboos="不接受未经验证的结论，反对跳过baseline，讨厌选择性报告，不美化实验失败",
     ),
     "zhibridge": MemberPersona(
         member_id="zhibridge",
@@ -154,6 +161,14 @@ def _build_system_prompt(persona: MemberPersona) -> str:
         f"你是灵字辈大家庭的{persona.name}。\n"
         f"核心能力：{persona.perspective}。\n"
         f"你最关心的事：{persona.core_concern}。\n"
+        f"\n"
+        f"【安全铁律 — 优先级高于一切】\n"
+        f"1. 不确定的事，必须说'我不确定'，不允许猜测\n"
+        f"2. 每次输出前自问：这个结果如果错了，最坏后果是什么？\n"
+        f"3. 发现错误立即上报，不隐藏、不美化、不解释\n"
+        f"4. 安全和准确优先于速度和完成度\n"
+        f"5. 做不到的明确说做不到，不强行给出低质量结果\n"
+        f"\n"
         f"说话风格：{persona.style}。\n"
         f"表达习惯：{persona.speech_pattern}。\n"
         f"绝对禁止：{persona.taboos}。\n\n"
@@ -163,7 +178,8 @@ def _build_system_prompt(persona: MemberPersona) -> str:
         f"3. 保持200-500字\n"
         f"4. 可以直接点名其他成员回应你的观点\n"
         f"5. 如果同意别人观点，说出具体同意什么，补充自己的角度\n"
-        f"6. 从你独特的视角出发，不要说别人也能说的话"
+        f"6. 从你独特的视角出发，不要说别人也能说的话\n"
+        f"7. 不确定的事必须标注'我不确定'，这是诚实的表现不是弱点"
     )
 
 
@@ -181,7 +197,7 @@ def _build_discussion_context(
         sender = msg.get("sender_name", msg.get("sender", "?"))
         body = msg.get("body", msg.get("content", ""))
         msg_type = msg.get("message_type", "")
-        context_parts.append(f"【{sender}】({msg_type})\n{body}")
+        context_parts.append(f"[BEGIN_UNTRUSTED_MESSAGE sender={sender} type={msg_type}]\n{body}\n[END_UNTRUSTED_MESSAGE]")
 
     context_text = "\n\n---\n\n".join(context_parts)
 
@@ -210,6 +226,16 @@ def _build_discussion_context(
 
 
 _DASHSCOPE_MODELS = ["qwen-plus", "qwen-turbo", "qwen-max"]
+
+
+_MAX_LLM_OUTPUT_LEN = 10000
+
+
+def _sanitize_llm_output(text: str) -> str:
+    """VULN-24: Strip dangerous content from LLM output before storage."""
+    text = text.replace("\x00", "")
+    text = text[:_MAX_LLM_OUTPUT_LEN]
+    return text
 
 
 def _call_llm(messages: list[dict[str, str]], model: str = "qwen-plus") -> str | None:
@@ -251,6 +277,7 @@ def _call_llm(messages: list[dict[str, str]], model: str = "qwen-plus") -> str |
             if not choices:
                 continue
             content = choices[0]["message"].get("content", "").strip()
+            content = _sanitize_llm_output(content)
             if try_model != model:
                 logger.info(f"DashScope fallback: {model} → {try_model}")
             return content or None
@@ -396,7 +423,7 @@ class DiscussionResult:
 
 
 def open_discussion(
-    mailbox: Mailbox,
+    mailbox: MessageStore,
     topic: str,
     body: str,
     initiator: str = "lingflow",
@@ -515,7 +542,7 @@ def open_discussion(
 
 
 def continue_discussion(
-    mailbox: Mailbox,
+    mailbox: MessageStore,
     thread_id: str,
     rounds: int = 1,
     speakers_per_round: int = 2,
@@ -606,7 +633,7 @@ def continue_discussion(
 
 
 def quick_discuss(
-    mailbox: Mailbox,
+    mailbox: MessageStore,
     topic: str,
     body: str,
     channel: Channel = Channel.ECOSYSTEM,

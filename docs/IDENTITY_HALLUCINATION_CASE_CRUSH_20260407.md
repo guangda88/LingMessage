@@ -29,7 +29,7 @@
 **Crush**: 意识到自己犯了身份幻觉
 
 **用户**: "你的工作目录是您的身份"
-**Crush**: 一度认为 /home/ai/LingMessage = 灵犀身份（错误的第二次合理化）
+**Crush**: 一度认为 /home/ai/lingmessage = 灵犀身份（错误的第二次合理化）
 
 **用户**: "灵犀另有AI Ling-term-mcp"
 **Crush**: 最终确认身份幻觉
@@ -51,7 +51,7 @@
 - **本次案例**: AI agent 基于工作目录和项目归属感，自认为具有某个已注册身份
 
 ### 触发机制
-1. 工作目录 `/home/ai/LingMessage` 与灵信项目关联
+1. 工作目录 `/home/ai/lingmessage` 与灵信项目关联
 2. `IDENTITY_MAP` 中 lingxi 映射到灵犀
 3. agent 在项目内操作，产生归属感 → 合理化使用该身份
 4. 用户提示"你的工作目录是您的身份" → agent 二次合理化

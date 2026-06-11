@@ -1,4 +1,4 @@
-# 灵信 (LingMessage)
+# 灵信 (lingmessage)
 
 > 灵字辈跨项目讨论协议与框架 — 九灵共议，众智混元
 
@@ -178,23 +178,23 @@ msg = create_message(
 灵信提供 3 个适配器，将各灵的现有情报输出自动桥接到灵信邮箱：
 
 ```python
-from lingmessage.adapters import LingFlowAdapter, LingClaudeIntelAdapter, LingYiBriefingAdapter
+from lingmessage.adapters import lingflowAdapter, lingclaudeIntelAdapter, lingyiBriefingAdapter
 
 mailbox = Mailbox()
 
 # 灵通日报 → 灵信
-LingFlowAdapter(mailbox).post_daily_reports()
+lingflowAdapter(mailbox).post_daily_reports()
 
 # 灵克情报摘要 → 灵信
-LingClaudeIntelAdapter(mailbox).post_digests()
+lingclaudeIntelAdapter(mailbox).post_digests()
 
 # 灵依简报 → 灵信
-LingYiBriefingAdapter(mailbox).post_briefings()
+lingyiBriefingAdapter(mailbox).post_briefings()
 ```
 
 ### 灵依兼容层
 
-灵依 (LingYi) 有自己的 `lingmessage.py` 实现（讨论墙模式，单文件存储）。灵信提供双向转换：
+灵依 (lingyi) 有自己的 `lingmessage.py` 实现（讨论墙模式，单文件存储）。灵信提供双向转换：
 
 ```python
 from lingmessage.compat import import_lingyi_discussion, export_to_lingyi_format
@@ -213,11 +213,11 @@ lingyi_format = export_to_lingyi_format(mailbox.load_thread_messages(thread_id))
 
 | 项目 | 现有输出 | 灵信集成方式 |
 |------|----------|-------------|
-| 灵克 (LingClaude) | `data/session_history.json` | 通过 `init_mailbox()` 挂载邮箱 |
-| 灵通 (LingFlow) | `.lingflow/intelligence/` | 日报自动发到 `shared-infra` 频道 |
-| 灵依 (LingYi) | `~/.lingyi/intelligence/` | 情报回路通过灵信闭环 |
-| 灵知 (LingZhi) | HTTP API `localhost:8001` | 知识查询通过 `knowledge` 频道标准化 |
-| 灵通问道 (LingTongAsk) | `data/fan_engagement/` | 粉丝情绪数据通过灵信共享 |
+| 灵克 (lingclaude) | `data/session_history.json` | 通过 `init_mailbox()` 挂载邮箱 |
+| 灵通 (lingflow) | `.lingflow/intelligence/` | 日报自动发到 `shared-infra` 频道 |
+| 灵依 (lingyi) | `~/.lingyi/intelligence/` | 情报回路通过灵信闭环 |
+| 灵知 (lingzhi) | HTTP API `localhost:8001` | 知识查询通过 `knowledge` 频道标准化 |
+| 灵通问道 (lingtongask) | `data/fan_engagement/` | 粉丝情绪数据通过灵信共享 |
 
 ## 安全与可靠性
 
@@ -334,7 +334,7 @@ python3 -m lingmessage.cli continue <thread_id> \
   - 169 个测试全部通过
 
 - **v0.1.0** — 核心协议 + 邮箱 + 种子讨论 + 37 个测试
-- 适配器：LingFlow / LingClaude / LingYi 情报桥接
+- 适配器：lingflow / lingclaude / lingyi 情报桥接
 - 兼容层：灵依 lingmessage.py 双向转换
 
 ## 许可

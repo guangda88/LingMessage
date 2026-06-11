@@ -40,7 +40,7 @@
 
 **修复**: 改为 `"inferred"` 或 `"verified"`
 
-#### 2.2 LingYi 原始 schema 消息 (1 处)
+#### 2.2 lingyi 原始 schema 消息 (1 处)
 
 文件 `disc_20260406102944/msg_0.json` 使用完全不同的 schema (`from_id`, `from_name`, `content`, `tags`)，缺少标准字段 (`message_id`, `sender`, `body`)。
 
@@ -64,7 +64,7 @@
 
 #### 2.5 旧格式消息 (13 处)
 
-13 条消息使用旧 LingYi 格式 (`recipients` 数组 + `type` 字段)，依赖 compat 层加载。
+13 条消息使用旧 lingyi 格式 (`recipients` 数组 + `type` 字段)，依赖 compat 层加载。
 
 #### 2.6 无效 UTF-8 文件 (2 处)
 

@@ -1,4 +1,4 @@
-# LingMessage API Reference
+# lingmessage API Reference
 
 ## Types (`lingmessage.types`)
 
@@ -169,31 +169,31 @@ Bridge external Ling-project data into the Mailbox.
 
 | Adapter | Method | Source |
 |---------|--------|--------|
-| `LingFlowAdapter(mailbox)` | `post_daily_reports() -> list[Message]` | `$LINGFLOW_ROOT/data/reports/` |
-| `LingClaudeIntelAdapter(mailbox)` | `post_digests() -> list[Message]` | `$LINGCLAUDE_ROOT/data/intel/` |
-| `LingYiBriefingAdapter(mailbox)` | `post_briefings() -> list[Message]` | `$LINGYI_ROOT/data/briefings/` |
+| `lingflowAdapter(mailbox)` | `post_daily_reports() -> list[Message]` | `$LINGFLOW_ROOT/data/reports/` |
+| `lingclaudeIntelAdapter(mailbox)` | `post_digests() -> list[Message]` | `$LINGCLAUDE_ROOT/data/intel/` |
+| `lingyiBriefingAdapter(mailbox)` | `post_briefings() -> list[Message]` | `$LINGYI_ROOT/data/briefings/` |
 
 Environment variables (with defaults):
-- `LINGFLOW_ROOT` — defaults to `~/LingFlow`
-- `LINGCLAUDE_ROOT` — defaults to `~/LingClaude`
-- `LINGYI_ROOT` — defaults to `~/LingYi`
+- `LINGFLOW_ROOT` — defaults to `~/lingflow`
+- `LINGCLAUDE_ROOT` — defaults to `~/lingclaude`
+- `LINGYI_ROOT` — defaults to `~/lingyi`
 
 ---
 
 ## Compat (`lingmessage.compat`)
 
-Bidirectional conversion between LingYi's `lingmessage.py` format and LingMessage.
+Bidirectional conversion between lingyi's `lingmessage.py` format and lingmessage.
 
 ```python
 from lingmessage.compat import import_lingyi_discussion, import_lingyi_store, export_to_lingyi_format
 
-# Import a single LingYi discussion dict
+# Import a single lingyi discussion dict
 threads = import_lingyi_discussion(mailbox, lingyi_dict)
 
-# Import all discussions from LingYi store directory
+# Import all discussions from lingyi store directory
 ids = import_lingyi_store(mailbox, lingyi_root=Path("~/.lingmessage"))
 
-# Export LingMessage messages to LingYi format
+# Export lingmessage messages to lingyi format
 lingyi_dict = export_to_lingyi_format(messages)
 ```
 
@@ -235,7 +235,7 @@ python3 -m lingmessage.cli <command> [options]
 | `stats` | Mailbox statistics |
 | `seed` | Populate with 6 seed discussions |
 | `sync` | Sync all Ling-project intelligence |
-| `import <file>` | Import LingYi discussion JSON |
+| `import <file>` | Import lingyi discussion JSON |
 | `discuss <topic>` | Start LLM-powered discussion (`--initiator`, `--participants`, `--rounds`, `--speakers`) |
 | `continue <thread_id>` | Continue LLM discussion (`--rounds`, `--speakers`) |
 

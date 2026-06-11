@@ -108,13 +108,13 @@ class TestTypes:
         assert restored.message_count == 1
 
     def test_all_ling_identities(self) -> None:
-        assert len(LingIdentity) == 12
+        assert len(LingIdentity) == 15
 
     def test_all_message_types(self) -> None:
         assert len(MessageType) == 8
 
     def test_all_channels(self) -> None:
-        assert len(Channel) == 6
+        assert len(Channel) == 13
 
 
 class TestMailbox:

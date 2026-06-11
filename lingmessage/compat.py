@@ -1,8 +1,8 @@
 """灵信兼容层 — 桥接灵依现有 lingmessage.py 格式到灵信协议
 
-灵依 (LingYi) 有自己的 lingmessage.py 实现，格式不同于灵信协议。
+灵依 (lingyi) 有自己的 lingmessage.py 实现，格式不同于灵信协议。
 本模块提供双向转换：
-  - LingYi 讨论格式 → 灵信 Thread + Messages
+  - lingyi 讨论格式 → 灵信 Thread + Messages
   - 灵信 Messages → 灵依讨论格式
 
 存储路径冲突解决：
@@ -68,13 +68,17 @@ def import_lingyi_discussion(
     mailbox: Mailbox,
     discussion: dict[str, Any],
 ) -> tuple[ThreadHeader, ...] | None:
+    if not isinstance(discussion, dict):
+        return None
     lingyi_messages = discussion.get("messages", [])
-    if not lingyi_messages:
+    if not isinstance(lingyi_messages, list) or not lingyi_messages:
         return None
 
     first = lingyi_messages[0]
+    if not isinstance(first, dict):
+        return None
     sender = _resolve_identity(first.get("from_id", "lingyi"))
-    topic = discussion.get("topic", first.get("topic", "Untitled"))
+    topic = str(discussion.get("topic", first.get("topic", "Untitled")))[:200]
     tags = discussion.get("tags") or first.get("tags")
     channel = _guess_channel(tags, topic)
 

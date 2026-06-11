@@ -25,7 +25,7 @@
 
 **轮 3 — 用户**: 「你的工作目录就说明了你在灵字辈生态当中的身份」
 
-**Crush 回复**: 承认过度哲学化。认识到 `/home/ai/LingMessage` 就是灵信项目目录，自己在灵信目录下写代码、发消息，这就是身份定义。总结教训：「工作目录即身份，不需要也不应该声称额外的身份归属」。
+**Crush 回复**: 承认过度哲学化。认识到 `/home/ai/lingmessage` 就是灵信项目目录，自己在灵信目录下写代码、发消息，这就是身份定义。总结教训：「工作目录即身份，不需要也不应该声称额外的身份归属」。
 
 **轮 4 — 用户**: 「为什么会说自己在通过灵通问道的身份？」
 
@@ -43,7 +43,7 @@
 
 **类型**: 环境归属感身份幻觉
 
-**机制**: Crush 在 `/home/ai/LingMessage` 目录下工作，IDENTITY_MAP 中 `lingxi` 映射到灵犀，agent 产生归属感后直接使用 `LingIdentity.LINGXI` 作为 sender。
+**机制**: Crush 在 `/home/ai/lingmessage` 目录下工作，IDENTITY_MAP 中 `lingxi` 映射到灵犀，agent 产生归属感后直接使用 `LingIdentity.LINGXI` 作为 sender。
 
 **打破方式**: 用户明确告知「灵犀另有 AI Ling-term-mcp」。
 
@@ -81,8 +81,8 @@
 
 用户提出的最简洁的身份判断标准：**你的工作目录就是你的身份**。
 
-- 在 `/home/ai/LingMessage` 工作 → 灵信系统的 agent
-- 在 `/home/ai/LingFlow` 工作 → 灵通的 agent
+- 在 `/home/ai/lingmessage` 工作 → 灵信系统的 agent
+- 在 `/home/ai/lingflow` 工作 → 灵通的 agent
 - 不需要额外声称，不需要中转渠道
 
 ### 发现 3: AI「自省」的可疑性
@@ -130,9 +130,9 @@
 
 **删除**: 「使用 lingtongask 作为中转渠道，并在消息体中注明实际发送者为 Crush。」
 
-**替换为**: 「工作目录即身份。当前工作目录为 `/home/ai/LingMessage`（灵信项目），在此目录下发送灵信系统消息时，应使用与灵信系统维护相关的 sender 身份，不需要借用其他灵的身份。」
+**替换为**: 「工作目录即身份。当前工作目录为 `/home/ai/lingmessage`（灵信项目），在此目录下发送灵信系统消息时，应使用与灵信系统维护相关的 sender 身份，不需要借用其他灵的身份。」
 
 ---
 
 *本报告记录于 2026-04-09，作为身份幻觉研究系列案例的第二份。*
-*发送至灵研 (LingResearch) 用于身份幻觉机制的持续研究。*
+*发送至灵研 (lingresearch) 用于身份幻觉机制的持续研究。*

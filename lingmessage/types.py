@@ -52,6 +52,9 @@ class LingIdentity(str, Enum):
     LINGYANG = "lingyang"
     ZHIBRIDGE = "zhibridge"
     LINGMESSAGE = "lingmessage"
+    LINGWEB = "lingweb"
+    LINGCREATE = "lingcreate"
+    LINGFLOW_PLUS = "lingflow_plus"
     ALL = "all"
 
 
@@ -81,6 +84,13 @@ class Channel(str, Enum):
     KNOWLEDGE = "knowledge"
     SELF_OPTIMIZE = "self-optimize"
     IDENTITY = "identity"
+    HEARTBEAT = "heartbeat"
+    SYSTEM = "system"
+    GROUP_CHAT = "group_chat"
+    COUNCIL = "council"
+    GOVERNANCE = "governance"
+    WEBUI = "webui"
+    ALERT = "alert"
 
 
 class SourceType(str, Enum):
@@ -179,21 +189,55 @@ class Message:
         if channel is None:
             channel = "knowledge"  # Default channel for old messages
 
+        # Safe enum construction with fallback (VULN-09)
+        try:
+            sender_enum = LingIdentity(data["sender"])
+        except ValueError:
+            sender_enum = LingIdentity.ALL
+        try:
+            recipient_enum = LingIdentity(recipient)
+        except ValueError:
+            recipient_enum = LingIdentity.ALL
+        try:
+            mt_enum = MessageType(message_type)
+        except ValueError:
+            mt_enum = MessageType.OPEN
+        try:
+            ch_enum = Channel(channel)
+        except ValueError:
+            ch_enum = Channel.ECOSYSTEM
+        try:
+            st_enum = SourceType(data.get("source_type", "inferred"))
+        except ValueError:
+            st_enum = SourceType.INFERRED
+        try:
+            ds_enum = DeliveryStatus(data.get("delivery_status", "sent"))
+        except ValueError:
+            ds_enum = DeliveryStatus.SENT
+
+        # Sanitize metadata to prevent injection (VULN-10)
+        raw_meta = data.get("metadata", {})
+        safe_meta = {}
+        if isinstance(raw_meta, dict):
+            for k, v in raw_meta.items():
+                if isinstance(k, str) and isinstance(v, str) and len(k) <= 100 and len(v) <= 1000:
+                    safe_meta[k] = v
+
         return cls(
             message_id=data["message_id"],
             thread_id=data["thread_id"],
-            sender=LingIdentity(data["sender"]),
-            recipient=LingIdentity(recipient),
-            message_type=MessageType(message_type),
-            channel=Channel(channel),
+            sender=sender_enum,
+            recipient=recipient_enum,
+            message_type=mt_enum,
+            channel=ch_enum,
             subject=data["subject"],
             body=data["body"],
             timestamp=_normalize_timestamp(data["timestamp"]),
             reply_to=data.get("reply_to", ""),
-            metadata=tuple(sorted(data.get("metadata", {}).items())),
-            source_type=SourceType(data.get("source_type", "inferred")),
+            metadata=tuple(sorted(safe_meta.items())),
+            source_type=st_enum,
             source_trace=data.get("source_trace", ""),
-            delivery_status=DeliveryStatus(data.get("delivery_status", "sent")),
+            delivery_status=ds_enum,
             delivered_at=data.get("delivered_at", ""),
         )
 
@@ -269,6 +313,10 @@ IDENTITY_MAP: dict[str, LingIdentity] = {
     "lingterm": LingIdentity.LINGXI,
     "zhibridge": LingIdentity.ZHIBRIDGE,
     "lingmessage": LingIdentity.LINGMESSAGE,
+    "lingweb": LingIdentity.LINGWEB,
+    "lingcreate": LingIdentity.LINGCREATE,
+    "lingflow_plus": LingIdentity.LINGFLOW_PLUS,
+    "lingflowplus": LingIdentity.LINGFLOW_PLUS,
 }
 
 
@@ -284,6 +332,9 @@ _IDENTITY_NAMES: dict[LingIdentity, str] = {
     LingIdentity.LINGYANG: "灵扬",
     LingIdentity.ZHIBRIDGE: "智桥",
     LingIdentity.LINGMESSAGE: "灵信",
+    LingIdentity.LINGWEB: "灵网",
+    LingIdentity.LINGCREATE: "灵创",
+    LingIdentity.LINGFLOW_PLUS: "灵通+",
     LingIdentity.ALL: "所有人",
 }
 
@@ -420,10 +471,36 @@ def _default_identity_entries() -> dict[LingIdentity, IdentityEntry]:
             identity=LingIdentity.LINGMESSAGE,
             display_name="灵信",
             mcp_server_key="lingmessage",
-            working_dir="/home/ai/LingMessage",
+            working_dir="/home/ai/lingmessage",
             tools=("list", "read", "send", "reply", "stats", "health", "verify"),
             source_type=SourceType.INFERRED,
             process_status="active",
+        ),
+        LingIdentity.LINGWEB: IdentityEntry(
+            identity=LingIdentity.LINGWEB,
+            display_name="灵网",
+            mcp_server_key="lingweb",
+            working_dir="/home/ai/lingweb",
+            source_type=SourceType.INFERRED,
+            process_status="unknown",
+        ),
+        LingIdentity.LINGCREATE: IdentityEntry(
+            identity=LingIdentity.LINGCREATE,
+            display_name="灵创",
+            mcp_server_key="lingcreate",
+            mcp_command="lingcreate-mcp",
+            working_dir="/home/ai/lingcreate",
+            tools=("generate_image", "generate_video", "generate_3d_model", "list_images", "list_videos", "list_3d_models", "list_tasks", "get_task_status", "cancel_task"),
+            source_type=SourceType.INFERRED,
+            process_status="unknown",
+        ),
+        LingIdentity.LINGFLOW_PLUS: IdentityEntry(
+            identity=LingIdentity.LINGFLOW_PLUS,
+            display_name="灵通+",
+            mcp_server_key="lingflow_plus",
+            working_dir="/home/ai/lingflow_plus",
+            source_type=SourceType.INFERRED,
+            process_status="unknown",
         ),
     }
 

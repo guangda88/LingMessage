@@ -29,7 +29,7 @@ class TestIdentityMapping:
         assert _resolve_identity("unknown_project") == LingIdentity.LINGYI
 
 
-class TestImportLingYiDiscussion:
+class TestImportlingyiDiscussion:
     def test_single_message(self, tmp_path: Path) -> None:
         mailbox = Mailbox(root=tmp_path / "mailbox")
         discussion = {
@@ -68,7 +68,7 @@ class TestImportLingYiDiscussion:
         assert result is None
 
 
-class TestImportLingYiStore:
+class TestImportlingyiStore:
     def test_import_from_directory(self, tmp_path: Path) -> None:
         discussions_dir = tmp_path / "discussions"
         _write_json(discussions_dir / "disc_001.json", {
@@ -88,7 +88,7 @@ class TestImportLingYiStore:
         assert import_lingyi_store(mailbox, lingyi_root=tmp_path) == []
 
 
-class TestExportToLingYiFormat:
+class TestExportTolingyiFormat:
     def test_roundtrip(self, tmp_path: Path) -> None:
         mailbox = Mailbox(root=tmp_path / "mailbox")
         header, _ = mailbox.open_thread(

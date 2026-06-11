@@ -23,7 +23,7 @@ def _make_cap(
         display_name="TestServer",
         tools=tools,
         transport="stdio",
-        command="test-cmd",
+        command="python3",
         registered_at="2026-04-08T00:00:00+00:00",
         last_heartbeat=heartbeat,
     )
@@ -172,14 +172,14 @@ class TestCapabilityRegistry:
                 agent_id="lingflow",
                 display_name="灵通",
                 tools=("list_skills", "run_skill"),
-                command="lingflow-mcp",
+                command="python3",
             ),
             "lingke": ServerCapability(
                 server_key="lingke",
                 agent_id="lingclaude",
                 display_name="灵克",
                 tools=("read_file", "write_file"),
-                command="lingclaude-mcp",
+                command="node",
             ),
         }
         merged = reg.merge_from_mcp_registry(mcp)

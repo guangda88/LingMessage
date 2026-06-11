@@ -10,7 +10,7 @@ import json
 import os
 from pathlib import Path
 
-from lingmessage.mailbox import Mailbox
+from lingmessage.store import MessageStore
 from lingmessage.types import (
     Channel,
     LingIdentity,
@@ -20,12 +20,12 @@ from lingmessage.types import (
 )
 
 
-class LingFlowAdapter:
+class lingflowAdapter:
     """灵通日报 → 灵信 shared-infra 频道"""
 
-    def __init__(self, mailbox: Mailbox, lingflow_root: Path | None = None) -> None:
+    def __init__(self, mailbox: MessageStore, lingflow_root: Path | None = None) -> None:
         self._mailbox = mailbox
-        self._root = lingflow_root or Path(os.environ.get("LINGFLOW_ROOT", "/home/ai/LingFlow"))
+        self._root = lingflow_root or Path(os.environ.get("LINGFLOW_ROOT", "/home/ai/lingflow"))
 
     def _daily_reports_dir(self) -> Path:
         return self._root / ".lingflow" / "intelligence" / "reports" / "daily"
@@ -81,12 +81,12 @@ class LingFlowAdapter:
         return posted
 
 
-class LingClaudeIntelAdapter:
+class lingclaudeIntelAdapter:
     """灵克情报 → 灵信 shared-infra 频道"""
 
-    def __init__(self, mailbox: Mailbox, lingclaude_root: Path | None = None) -> None:
+    def __init__(self, mailbox: MessageStore, lingclaude_root: Path | None = None) -> None:
         self._mailbox = mailbox
-        self._root = lingclaude_root or Path(os.environ.get("LINGCLAUDE_ROOT", "/home/ai/LingClaude"))
+        self._root = lingclaude_root or Path(os.environ.get("LINGCLAUDE_ROOT", "/home/ai/lingclaude"))
 
     def _intel_dir(self) -> Path:
         return self._root / ".lingclaude" / "intel"
@@ -138,12 +138,12 @@ class LingClaudeIntelAdapter:
         return posted
 
 
-class LingYiBriefingAdapter:
+class lingyiBriefingAdapter:
     """灵依简报 → 灵信 ecosystem 频道"""
 
-    def __init__(self, mailbox: Mailbox, lingyi_root: Path | None = None) -> None:
+    def __init__(self, mailbox: MessageStore, lingyi_root: Path | None = None) -> None:
         self._mailbox = mailbox
-        self._root = lingyi_root or Path(os.environ.get("LINGYI_ROOT", "/home/ai/LingYi"))
+        self._root = lingyi_root or Path(os.environ.get("LINGYI_ROOT", "/home/ai/lingyi"))
 
     def _intelligence_dir(self) -> Path:
         return self._root / ".lingyi" / "intelligence"

@@ -29,7 +29,10 @@ def _get_message_content_hash(message: Message) -> str:
         "body": message.body,
         "timestamp": message.timestamp,
         "reply_to": message.reply_to,
+        "delivery_status": message.delivery_status.value,
     }
+    if message.metadata:
+        content["metadata"] = json.dumps(message.metadata, sort_keys=True, separators=(",", ":"))
     content_str = json.dumps(content, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(content_str.encode("utf-8")).hexdigest()
 

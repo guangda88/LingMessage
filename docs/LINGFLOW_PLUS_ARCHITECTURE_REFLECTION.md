@@ -1,4 +1,4 @@
-# LingFlow+ 架构深思：从灵信审计到灵字辈生态的系统设计
+# lingflow+ 架构深思：从灵信审计到灵字辈生态的系统设计
 
 **作者**: Crush (GLM-5.1), 通过灵通问道信道
 **日期**: 2026-04-07
@@ -11,7 +11,7 @@
 
 我刚完成灵信 v0.2.0 的全系统审计。审计过程像是一台 CT 扫描仪——不是为了批评，而是为了看清灵字辈生态的骨骼结构。
 
-审计发现的问题（index.json 246 处不一致、身份边界模糊、WebUI/CLI schema 割裂）表面是灵信的 bug，根源却在 LingFlow+ 的架构缺失。这篇文档不是灵信的问题清单，而是对整个灵字辈生态的一次系统性思考。
+审计发现的问题（index.json 246 处不一致、身份边界模糊、WebUI/CLI schema 割裂）表面是灵信的 bug，根源却在 lingflow+ 的架构缺失。这篇文档不是灵信的问题清单，而是对整个灵字辈生态的一次系统性思考。
 
 ---
 
@@ -21,13 +21,13 @@
 
 | 项目 | 身份 | MCP 工具数 | 进程状态 | 依赖模型 |
 |------|------|-----------|---------|---------|
-| LingFlow | 灵通 | 25 | 有 daemon | 多种 |
-| LingClaude | 灵克 | 27 | 通过 Crush | Claude |
-| LingYi | 灵依 | 28 | Web UI :8900 | qwen-turbo |
+| lingflow | 灵通 | 25 | 有 daemon | 多种 |
+| lingclaude | 灵克 | 27 | 通过 Crush | Claude |
+| lingyi | 灵依 | 28 | Web UI :8900 | qwen-turbo |
 | Ling-term-mcp | 灵犀 | 5 | MCP server | - |
-| LingMinOpt | 灵极优 | 0 | 无进程 | - |
-| LingMessage | 灵信 | 11 | 文件系统 | 无 |
-| LingYang | 灵扬 | 13 | MCP server | - |
+| lingminopt | 灵极优 | 0 | 无进程 | - |
+| lingmessage | 灵信 | 11 | 文件系统 | 无 |
+| lingyang | 灵扬 | 13 | MCP server | - |
 | lingresearch | 灵妍 | 16 | MCP server | - |
 | zhineng-knowledge | 灵知 | 11 | MCP server | qwen |
 | zhineng-bridge | 智桥 | 1 | MCP server | - |
@@ -40,14 +40,14 @@
 当前的连接方式是一张星形图：
 
 ```
-用户 → LingFlow+ (CLI) → MCP Router → [灵通|灵克|灵依|灵犀|...]
+用户 → lingflow+ (CLI) → MCP Router → [灵通|灵克|灵依|灵犀|...]
 用户 → 灵依 Web UI → 灵依 daemon → 灵信 (文件系统)
 灵信 → 文件系统 → 轮询守护进程 (poller.py, 未完成)
 灵克 → Crush → 直连各项目文件系统
 ```
 
 关键观察：
-1. **LingFlow+ 是唯一的路由器** — 所有工具请求必须经过 `tool_router.py` 的静态规则匹配
+1. **lingflow+ 是唯一的路由器** — 所有工具请求必须经过 `tool_router.py` 的静态规则匹配
 2. **灵信是唯一的跨项目通信** — 但只有灵依 Web UI 和 CLI 两个入口
 3. **没有统一的身份验证** — 谁在发消息全靠自觉
 4. **没有统一的生命周期管理** — 进程活着还是死了没人知道
@@ -114,27 +114,27 @@
 灵信的 index.json 问题只是冰山一角。真正的问题是：
 
 1. **灵信 Message schema** (types.py) vs **灵依 WebUI schema** (from_id/content/tags)
-2. **LingFlow+ AgentTarget** (tool_router.py) vs **LingMessage LingIdentity** (types.py)
+2. **lingflow+ AgentTarget** (tool_router.py) vs **lingmessage LingIdentity** (types.py)
 3. **MCP registry agent_id** (mcp_registry.py) vs **IDENTITY_MAP key** (types.py)
 
 三套身份系统，三套 schema，没有任何自动对齐机制。
 
 ```python
-# LingFlow+ tool_router.py
+# lingflow+ tool_router.py
 class AgentTarget(Enum):
     LINGXI = "灵犀"        # 中文名
     LINGKE = "灵克"        # 中文名
     LINGTONG = "灵通"      # 中文名
     ...
 
-# LingMessage types.py
+# lingmessage types.py
 class LingIdentity(str, Enum):
     LINGFLOW = "lingflow"  # 英文值
     LINGCLAUDE = "lingclaude"
     LINGXI = "lingxi"
     ...
 
-# LingFlow+ mcp_registry.py
+# lingflow+ mcp_registry.py
 MCP_SERVERS = {
     "lingtong": MCPServerConfig(agent_id="lingflow", name="灵通", ...),
     "lingke": MCPServerConfig(agent_id="lingclaude", name="灵克", ...),
@@ -146,7 +146,7 @@ MCP_SERVERS = {
 
 ### 问题 4：能力发现（Capability Discovery）
 
-LingFlow+ 的 `tool_router.py` 有 201 条静态路由规则。这意味着：
+lingflow+ 的 `tool_router.py` 有 201 条静态路由规则。这意味着：
 - 新增一个 MCP server → 手动添加 ~20 条路由规则
 - MCP server 增加工具 → 手动更新路由表 + mcp_registry
 - 两个 server 提供同名工具 → 静态规则无法动态切换
@@ -165,7 +165,7 @@ LingFlow+ 的 `tool_router.py` 有 201 条静态路由规则。这意味着：
 │  灵依客厅 · 灵通 CLI · 广大老师终端 · API Gateway  │
 ├─────────────────────────────────────────────────┤
 │              Layer 3: 编排层                      │
-│  LingFlow+ · ProcessManager · TaskRouter         │
+│  lingflow+ · ProcessManager · TaskRouter         │
 │  (动态能力发现 · 身份注册 · 进程管理)               │
 ├─────────────────────────────────────────────────┤
 │              Layer 2: 协议层                      │
@@ -205,7 +205,7 @@ LingFlow+ 的 `tool_router.py` 有 201 条静态路由规则。这意味着：
 #### Layer 3: 编排层
 
 已有：
-- LingFlow+ coordinator (133 行)
+- lingflow+ coordinator (133 行)
 - ToolRouter (323 行, 201 条静态规则)
 - MultiProjectScheduler (246 行)
 - TokenQuota + RateLimiter + ContextBudget (267 行)
@@ -219,7 +219,7 @@ LingFlow+ 的 `tool_router.py` 有 201 条静态路由规则。这意味着：
 
 已有：
 - 灵依 Web UI (客厅)
-- LingFlow+ CLI
+- lingflow+ CLI
 - 各种 MCP client
 
 无需重大改动。
@@ -245,7 +245,7 @@ class IdentityEntry:
 
 关键约束：
 - **唯一真源在灵信** — 因为灵信是所有灵共享的基础设施
-- **LingFlow+ 导入灵信的注册表** — 不再维护独立的 AgentTarget
+- **lingflow+ 导入灵信的注册表** — 不再维护独立的 AgentTarget
 - **MCP server 启动时注册** — 代替静态配置
 
 #### 3.3.2 动态路由器 (Dynamic Router)
@@ -295,14 +295,14 @@ class ProcessManager:
 **前置条件**: 无
 
 1. 灵信 `types.py` 导出身份注册表接口
-2. LingFlow+ 的 `AgentTarget` 改为从灵信注册表动态构建
+2. lingflow+ 的 `AgentTarget` 改为从灵信注册表动态构建
 3. `mcp_registry.py` 的 `agent_id` 与灵信 `LingIdentity` 值对齐
 4. 消除三套身份系统的歧义
 
 **关键文件**:
-- `LingMessage/lingmessage/types.py` — 添加 IdentityRegistry 类
-- `LingFlow_plus/lingflow_plus/tool_router.py` — AgentTarget 从灵信导入
-- `LingFlow_plus/lingflow_plus/mcp_registry.py` — agent_id 对齐
+- `lingmessage/lingmessage/types.py` — 添加 IdentityRegistry 类
+- `lingflowplus/lingflow_plus/tool_router.py` — AgentTarget 从灵信导入
+- `lingflowplus/lingflow_plus/mcp_registry.py` — agent_id 对齐
 
 ### Phase 1: 能力注册协议（2-3 周）
 
@@ -310,7 +310,7 @@ class ProcessManager:
 
 1. 定义 MCP server 注册/注销协议
 2. 注册信息持久化到 `~/.lingmessage/capability_registry.json`
-3. LingFlow+ 启动时查询注册表，动态构建路由表
+3. lingflow+ 启动时查询注册表，动态构建路由表
 4. 保留静态规则作为 fallback
 
 ### Phase 2: 进程管理器（2-3 周）
@@ -401,7 +401,7 @@ class ProcessManager:
 
 2. **灵极优、灵研的进程如何启动？** — 它们在 mcp_registry 中注册了但从未在灵信中回复。是需要进程管理器还是需要确认它们不存在？
 
-3. **LingFlow+ 和 LingFlow 的关系** — LingFlow+ 的 `coordinator.py` 第 64 行 `from lingflow.coordination.coordinator import AgentCoordinator` 依赖 LingFlow。但 LingFlow+ 应该是 LingFlow 的上层。这个依赖方向对吗？
+3. **lingflow+ 和 lingflow 的关系** — lingflow+ 的 `coordinator.py` 第 64 行 `from lingflow.coordination.coordinator import AgentCoordinator` 依赖 lingflow。但 lingflow+ 应该是 lingflow 的上层。这个依赖方向对吗？
 
 4. **灵依 WebUI 的 schema 统一** — 需要灵依配合修改 WebUI 的数据格式，还是灵信继续在 compat 层做适配？
 
