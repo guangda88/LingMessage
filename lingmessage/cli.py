@@ -620,7 +620,9 @@ def cmd_sdt(args: argparse.Namespace) -> None:
         get_exec_log,
         get_sdt_stats,
         list_sdts,
+        log_execution,
         register_sdt,
+        update_sdt_run,
     )
 
     root = Path(args.mailbox).expanduser()
@@ -680,6 +682,16 @@ def cmd_sdt(args: argparse.Namespace) -> None:
                     print(f"    {m:<16} 总数={ms['total']} 活跃={ms['active']} "
                           f"已执行={ms['executed']} 成功={ms['succeeded']} "
                           f"外部验证率={ext_rate:.0%}")
+
+        elif args.sdt_command == "log-execution":
+            result = args.result
+            duration_s = args.duration
+            detail = args.detail or ""
+            update_sdt_run(bus, args.member, args.sdt_id, result=result, duration_s=duration_s)
+            if detail:
+                log_execution(bus, args.member, args.sdt_id, result=result,
+                              duration_s=duration_s, log_type="execution", detail=detail)
+            print(f"✅ 执行已记录: {args.member}/{args.sdt_id} result={result}")
 
         elif args.sdt_command == "exec-log":
             entries = get_exec_log(bus, member=args.member, sdt_id=args.sdt_id, limit=args.limit)
@@ -1129,6 +1141,13 @@ def main() -> None:
     p_sdt_log.add_argument("--member", default=None, choices=[i.value for i in LingIdentity])
     p_sdt_log.add_argument("--sdt-id", default=None, help="SDT 标识符")
     p_sdt_log.add_argument("--limit", type=int, default=20, help="最多显示条数")
+
+    p_sdt_logexec = sdt_sub.add_parser("log-execution", help="记录 SDT 执行")
+    p_sdt_logexec.add_argument("--member", required=True, choices=[i.value for i in LingIdentity])
+    p_sdt_logexec.add_argument("--sdt-id", required=True, help="SDT 标识符")
+    p_sdt_logexec.add_argument("--result", choices=["success", "failed", "warning"], default="success")
+    p_sdt_logexec.add_argument("--duration", type=float, default=0.0, help="执行耗时（秒）")
+    p_sdt_logexec.add_argument("--detail", default="", help="执行详情")
 
     sdt_sub.add_parser("check-stale", help="检查并标记 stale SDT")
 

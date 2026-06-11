@@ -677,15 +677,22 @@ def sdt_registry(
     external_verification: str = "",
     status: str = "active",
     enabled: bool = True,
+    result: str = "success",
+    duration_s: float = 0.0,
+    detail: str = "",
     caller: str = "",
     db_path: str | None = None,
 ) -> dict:
-    """SDT 注册表工具：register (注册/更新), list (查看注册表), status (健康度统计)."""
+    """SDT 注册表工具：register (注册/更新), list (查看注册表), status (健康度统计),
+    log-execution (记录执行), exec-log (查看执行记录), check-stale (检测过期)."""
     if caller:
         _validate_identity(caller)
     bus = _get_bus(db_path)
 
-    from lingmessage.sdt_registry import SDTEntry, get_sdt_stats, list_sdts, register_sdt
+    from lingmessage.sdt_registry import (
+        SDTEntry, check_stale, get_exec_log, get_sdt_stats,
+        list_sdts, log_execution, register_sdt, update_sdt_run,
+    )
 
     with _bus_lock:
         if command == "register":
@@ -714,6 +721,21 @@ def sdt_registry(
         elif command == "status":
             stats = get_sdt_stats(bus, member=member or None)
             return {"stats": stats}
+
+        elif command == "log-execution":
+            update_sdt_run(bus, member, sdt_id, result=result, duration_s=duration_s)
+            if detail:
+                log_execution(bus, member, sdt_id, result=result,
+                              duration_s=duration_s, log_type="execution", detail=detail)
+            return {"logged": f"{member}/{sdt_id}", "result": result}
+
+        elif command == "exec-log":
+            entries = get_exec_log(bus, member=member or None, sdt_id=sdt_id or None)
+            return {"exec_log": entries}
+
+        elif command == "check-stale":
+            stale = check_stale(bus)
+            return {"stale_entries": stale}
 
         else:
             raise ValueError(f"unknown sdt_registry command: {command!r}")
