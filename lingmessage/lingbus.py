@@ -1243,6 +1243,37 @@ class LingBus:
         return cursor.rowcount
 
     @_serialized_write
+    def prune_auto_messages(self, *, older_than_days: int = 30) -> dict:
+        """Remove auto-generated system messages older than N days.
+
+        Cleans wakeup notifications, session restore checkpoints, interrupt
+        monitoring reports, and SDTH tier alerts. Preserves CRITICAL/DOWN
+        alerts and all non-system messages.
+
+        Returns dict with keys: deleted, kept_critical, cutoff.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=older_than_days)).isoformat()
+        kept_critical = self._conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE timestamp < ? AND channel = 'system' "
+            "AND (subject LIKE '%CRITICAL%' OR subject LIKE '%DOWN%')",
+            (cutoff,),
+        ).fetchone()[0]
+        cursor = self._conn.execute(
+            "DELETE FROM messages WHERE timestamp < ? AND channel = 'system' "
+            "AND (subject LIKE ? OR subject LIKE ? OR subject LIKE ? "
+            "OR subject LIKE ? OR subject LIKE ? OR subject LIKE ? "
+            "OR subject LIKE ?)",
+            (cutoff, "%唤醒%", "%会话恢复%", "%中断监控%",
+             "%L1 %", "%L2 %", "%会话停滞%", "%Load%"),
+        )
+        self._conn.commit()
+        return {
+            "deleted": cursor.rowcount,
+            "kept_critical": kept_critical,
+            "cutoff": cutoff,
+        }
+
+    @_serialized_write
     def sync_from_mailbox(self, mailbox: Mailbox) -> int:
         """Import all threads from a Mailbox instance into LingBus.
 
