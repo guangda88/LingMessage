@@ -15,3 +15,8 @@ career_education_history.txt
 .ling-term-mcp/
 .lingmessage/
 scripts/__pycache__/
+
+# 2026-06-14 安全清理: 排除数据库文件
+*.db
+*.sqlite
+*.jsonl
